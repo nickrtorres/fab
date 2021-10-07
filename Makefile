@@ -9,17 +9,22 @@ CXXFLAGS = -Wall -Werror -Wpedantic               \
 .cpp.o:
 	$(CXX) $(CXXFLAGS) -c $<
 
-main: fab.o main.o
+fab: fab.o main.o
 	$(CXX) $(CXXFLAGS) -o $@ fab.o main.o
 
-check: testrunner
+check: unit integration
+
+integration: testrunner fab
+	python3 integration.py
+
+unit: testrunner
 	./testrunner
 
 testrunner: testrunner.o fab.o
 	$(CXX) $(CXXFLAGS) -o $@ -lgtest testrunner.o fab.o
 
 clean:
-	rm -rf main.o fab.o testrunner.o main testrunner
+	rm -rf main.o fab.o testrunner.o fab testrunner
 
 main.o: main.cpp
 fab.o: fab.cpp fab.h
