@@ -21,7 +21,7 @@ std::ostream &operator<<(std::ostream &os, const Token &t) {
   case TokenType::Eof:
     return os << "EOF";
   default:
-    fatal("unknown token");
+    std::abort();
   }
 }
 
@@ -31,7 +31,7 @@ std::ostream &operator<<(std::ostream &os, const Rule &r) {
 }
 
 std::ostream &operator<<(std::ostream &os, const Environment &env) {
-  for (auto r : env.m_rules) {
+  for (auto r : env.rules) {
     os << r;
   }
 
@@ -39,7 +39,7 @@ std::ostream &operator<<(std::ostream &os, const Environment &env) {
 }
 
 TEST(Lexer, ItRecognizesArrows) {
-  auto actual = Lexer("<-").lex();
+  auto actual = lex("<-");
 
   auto expected =
       std::vector<Token>{{TokenType::Arrow, {}}, {TokenType::Eof, {}}};
@@ -47,8 +47,7 @@ TEST(Lexer, ItRecognizesArrows) {
 }
 
 TEST(Lexer, ItRecognizesIdentifiers) {
-  const std::string foo = "foo;";
-  auto actual = Lexer(foo).lex();
+  auto actual = lex("foo;");
 
   auto expected = std::vector<Token>{{TokenType::Iden, std::string_view{"foo"}},
                                      {TokenType::SemiColon, {}},
@@ -57,8 +56,7 @@ TEST(Lexer, ItRecognizesIdentifiers) {
 }
 
 TEST(Lexer, ItRecognizesBraces) {
-  const std::string foo = "{}";
-  auto actual = Lexer(foo).lex();
+  auto actual = lex("{}");
 
   auto expected = std::vector<Token>{
       {TokenType::LBrace, {}}, {TokenType::RBrace, {}}, {TokenType::Eof, {}}};
@@ -66,8 +64,7 @@ TEST(Lexer, ItRecognizesBraces) {
 }
 
 TEST(Lexer, ItRecognizesAFullRule) {
-  const std::string rule = "foo <- bar {baz;}";
-  auto actual = Lexer(rule).lex();
+  auto actual = lex("foo <- bar { baz; }");
 
   auto expected =
       std::vector<Token>{{TokenType::Iden, "foo"}, {TokenType::Arrow, {}},
@@ -78,9 +75,8 @@ TEST(Lexer, ItRecognizesAFullRule) {
 }
 
 TEST(Parser, ItParsesARule) {
-  const std::string program = "main <- main.cpp { c++ -o main main.cpp; }";
-  auto tokens = Lexer(program).lex();
-  auto actual = Parser(tokens).parse();
+  auto tokens = lex("main <- main.cpp { c++ -o main main.cpp; }");
+  auto actual = parse(std::move(tokens));
 
   auto expected = Environment{{{.target = "main",
                                 .action = "c++ -o main main.cpp",

@@ -1,83 +1,79 @@
-#include <cassert>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
+#include <map>
+#include <set>
 #include <sstream>
+#include <stack>
 #include <stdlib.h>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 
 #include "fab.h"
 
-bool isTerminal(const std::string_view &dependent) { return true; }
+namespace {
+namespace detail {
+void eval(const Rule &rule) {
+  std::cerr << rule.action << std::endl;
+  system(rule.action.c_str());
+}
+} // namespace detail
 
-class RuleRunner {
-  virtual void dispatch(const Rule &) const = 0;
+template <typename T> using Ref = std::reference_wrapper<T>;
 
-public:
-  virtual ~RuleRunner() = default;
-  void operator()(const Rule &rule) { dispatch(rule); }
-};
+// traverse through dependency tree (depth first) until all a rules descendents
+// are satisfied.
+void eval_rule(const Environment &env, const Rule &rule) {
+  auto stack = std::stack<Ref<const Rule>>{};
+  auto visited = std::set<std::string_view>{};
 
-struct TargetOutOfDate final : public RuleRunner {
-  void dispatch(const Rule &rule) const override {
-    std::cerr << rule.action << std::endl;
-    system(rule.action.c_str());
-  }
-};
+  stack.push(rule);
 
-using TargetDoesNotExist = TargetOutOfDate;
+  while (!stack.empty()) {
+    auto top = stack.top();
 
-struct NoOpRunner : public RuleRunner {
-  void dispatch(const Rule &rule) const override {
-    std::cerr << "already up to date" << std::endl;
-  }
-};
-
-namespace factory {
-std::unique_ptr<RuleRunner> get_runner(const Rule &rule) {
-  if (!std::filesystem::exists(rule.target)) {
-    return std::unique_ptr<RuleRunner>{new TargetDoesNotExist{}};
-  }
-
-  if (isTerminal(rule.dependency)) {
-    if (std::filesystem::last_write_time(rule.target) <
-        std::filesystem::last_write_time(rule.dependency)) {
-      return std::unique_ptr<RuleRunner>{new TargetOutOfDate{}};
+    if (visited.contains(top.get().dependency) ||
+        env.is_terminal(top.get().dependency)) {
+      detail::eval(top);
+      visited.insert(top.get().target);
+      stack.pop();
     } else {
-      return std::unique_ptr<RuleRunner>{new NoOpRunner{}};
+      stack.push(env.get(top.get().dependency));
     }
-  } else {
-    // TODO
-    throw std::runtime_error("not implemented");
   }
 }
+} // namespace
 
-} // namespace factory
+int main(int argc, char **argv) {
+  auto fail = [program = std::as_const(argv[0])](std::string_view msg) -> int {
+    std::cerr << program << ": " << msg << std::endl;
+    return 1;
+  };
 
-int main() {
   const std::string FABFILE = "Fabfile";
 
-  if (!std::filesystem::exists(FABFILE)) {
-    std::cerr << "Fabfile not found." << std::endl;
-    return 1;
+  if (argc != 2) {
+    return fail("specify target to build.");
   }
 
+  if (!std::filesystem::exists(FABFILE)) {
+    return fail("Fabfile not found.");
+  }
+
+  const std::string target = argv[1];
   std::ifstream handle(FABFILE);
 
   if (!handle.is_open()) {
-    return 1;
+    return fail("could not open Fabfile.");
   }
 
   std::stringstream buf;
   buf << handle.rdbuf();
   std::string program = std::move(buf.str());
 
-  auto tokens = Lexer(program).lex();
-  auto env = Parser(tokens).parse();
-
-  auto default_rule = env.default_rule();
-  auto runner = factory::get_runner(default_rule);
-  (*runner)(default_rule);
+  auto env = parse(lex(program));
+  eval_rule(env, env.get(target));
 }

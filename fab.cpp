@@ -6,19 +6,14 @@
 
 #include "fab.h"
 
-[[noreturn]] void fatal(std::string_view msg, std::source_location loc) {
-  std::cerr << loc.file_name() << ':' << loc.function_name() << ':'
-            << loc.line() << ' ' << msg << std::endl;
-  std::abort();
-}
-
+namespace detail {
 LexError::LexError(const char *m) : std::runtime_error(m), msg(m) {}
 
 const char *LexError::what() noexcept { return msg; }
 
-Lexer::Lexer(std::string_view source) : m_buf(source) {}
+LexState::LexState(std::string_view source) : m_buf(source) {}
 
-Option<char> Lexer::next() {
+Option<char> LexState::next() {
   if (m_eof) {
     return {};
   }
@@ -33,7 +28,9 @@ Option<char> Lexer::next() {
   return m_buf[old];
 }
 
-void Lexer::eat(char expected) {
+bool LexState::eof() const { return this->m_eof; }
+
+void LexState::eat(char expected) {
   if (expected != m_buf[m_offset]) {
     throw LexError("bad token");
   }
@@ -41,7 +38,7 @@ void Lexer::eat(char expected) {
   assert(next().has_value());
 }
 
-Option<char> Lexer::peek() const {
+Option<char> LexState::peek() const {
   if (m_eof) {
     return {};
   } else {
@@ -49,8 +46,12 @@ Option<char> Lexer::peek() const {
   }
 }
 
+std::string_view LexState::extract_lexeme(std::size_t begin, std::size_t end) {
+  return std::string_view{m_buf.begin() + begin, m_buf.begin() + end};
+}
+
 std::tuple<std::size_t, std::size_t>
-Lexer::eat_until(std::function<bool(char)> pred) {
+LexState::eat_until(std::function<bool(char)> pred) {
   assert(m_offset != 0);
   std::size_t begin = m_offset - 1;
   std::size_t end = m_buf.size();
@@ -71,83 +72,16 @@ Lexer::eat_until(std::function<bool(char)> pred) {
   return {begin, end};
 }
 
-std::vector<Token> Lexer::lex() && {
-  auto tokens = std::vector<Token>{};
+ParseState::ParseState(std::vector<Token> &&tokens) : m_tokens(tokens) {}
 
-  while (!m_eof) {
-    auto c = next();
-    if (!c) {
-      break;
-    }
+Environment ParseState::env() && { return std::exchange(m_env, {}); }
 
-    switch (c.value()) {
-    case ';':
-      tokens.push_back({TokenType::SemiColon, {}});
-      break;
-    case '{':
-      tokens.push_back({TokenType::LBrace, {}});
-      break;
-    case '}':
-      tokens.push_back({TokenType::RBrace, {}});
-      break;
-    case '<':
-      this->eat('-');
-      tokens.push_back({TokenType::Arrow, {}});
-      break;
-    case '\t':
-    case '\n':
-    case ' ':
-      break;
-    default:
-      auto [begin, end] =
-          eat_until([](char c) { return c == ' ' || c == '\n' || c == ';'; });
-      tokens.push_back(
-          {TokenType::Iden,
-           std::string_view{m_buf.begin() + begin, m_buf.begin() + end}});
-      break;
-    }
-  }
-
-  tokens.push_back({TokenType::Eof, {}});
-  return tokens;
-}
-
-std::size_t RuleHash::operator()(const Rule &r) const noexcept {
-  return std::hash<std::string_view>{}(r.target);
-}
-
-void Environment::insert(Rule &&rule) { m_rules.emplace(std::move(rule)); }
-
-const Rule &Environment::default_rule() { return *(m_rules.cbegin()); }
-
-// main <- main.o {
-//   c++ main.o -o main
-// }
-//
-// <rule>      ::= <target> arrow <dep> lbrace <action> rbrace
-// <rule>      ::= <target> lbrace <action> rbrace
-// <target>    ::= iden
-// <dep>       ::= iden
-// <action>    ::= iden_list
-// <iden_list> ::= iden semicolon
-// <iden_list> ::= iden space <iden_list>
-//
-Parser::Parser(std::vector<Token> tokens) : m_tokens(tokens) {}
-
-Environment Parser::parse() && {
-  while (!eof()) {
-    rule();
-  }
-
-  return m_env;
-}
-
-bool Parser::eof() {
+bool ParseState::eof() {
   assert(m_offset != m_tokens.cend());
   return m_offset->token_type == TokenType::Eof;
 }
 
-const Token &Parser::expect(TokenType tt) {
+const Token &ParseState::expect(TokenType tt) {
   const auto &token = *m_offset;
 
   if (tt != token.token_type) {
@@ -158,7 +92,7 @@ const Token &Parser::expect(TokenType tt) {
   return token;
 }
 
-void Parser::rule() {
+void ParseState::rule() {
   std::string_view target = this->target();
   expect(TokenType::Arrow);
   std::string_view dependency = this->dependency();
@@ -169,15 +103,15 @@ void Parser::rule() {
   m_env.insert({.target = target, .action = action, .dependency = dependency});
 }
 
-std::string_view Parser::target() {
+std::string_view ParseState::target() {
   return expect(TokenType::Iden).lexeme.value();
 };
 
-std::string_view Parser::dependency() {
+std::string_view ParseState::dependency() {
   return expect(TokenType::Iden).lexeme.value();
 }
 
-std::string Parser::action() {
+std::string ParseState::action() {
   // Pretty much foldl, but that's not until C++23:
   // http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p2214r0.html#stdaccumulate-rangesfold
   std::string action;
@@ -199,4 +133,70 @@ std::string Parser::action() {
   return action;
 }
 
-void Parser::iden_list() {}
+void ParseState::iden_list() {}
+} // namespace detail
+
+std::vector<Token> lex(std::string_view source) {
+  detail::LexState state{source};
+  auto tokens = std::vector<Token>{};
+
+  while (!state.eof()) {
+    auto c = state.next();
+    if (!c) {
+      break;
+    }
+
+    switch (c.value()) {
+    case ';':
+      tokens.push_back({TokenType::SemiColon, {}});
+      break;
+    case '{':
+      tokens.push_back({TokenType::LBrace, {}});
+      break;
+    case '}':
+      tokens.push_back({TokenType::RBrace, {}});
+      break;
+    case '<':
+      state.eat('-');
+      tokens.push_back({TokenType::Arrow, {}});
+      break;
+    case '\t':
+    case '\n':
+    case ' ':
+      break;
+    default:
+      auto [begin, end] = state.eat_until(
+          [](char c) { return c == ' ' || c == '\n' || c == ';'; });
+      tokens.emplace_back(TokenType::Iden, state.extract_lexeme(begin, end));
+      break;
+    }
+  }
+
+  tokens.push_back({TokenType::Eof, {}});
+  return tokens;
+}
+
+Environment parse(std::vector<Token> &&tokens) {
+  auto state = detail::ParseState{std::move(tokens)};
+  while (!state.eof()) {
+    state.rule();
+  }
+
+  return std::move(state).env();
+}
+
+void Environment::insert(Rule &&rule) { rules.emplace(std::move(rule)); }
+
+bool Environment::is_terminal(std::string_view rule) const {
+  return !rules.contains(rule);
+}
+
+const Rule &Environment::get(std::string_view name) const {
+  auto it = rules.find(name);
+
+  if (it == rules.cend()) {
+    throw std::runtime_error("No such rule!");
+  } else {
+    return *it;
+  }
+}

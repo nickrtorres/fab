@@ -7,47 +7,39 @@ FAB_TEST_SRC = 'fab_test_program.c'
 FABFILE = 'Fabfile'
 
 
-def create_simple_program_file():
-    program = '''\
-#include "stdio.h"
+def create_fabfile_with_deps():
+    fab = '''\
+foo <- bar {
+    echo 3;
+}
 
-int main() {
-    puts("Hello!");
-    return 0;
+bar <- baz {
+    echo 2;
+}
+
+baz <- qux {
+    echo 1;
 }
 '''
-
-    with open(FAB_TEST_SRC, mode='x') as test_program:
-        test_program.write(program)
-
-
-def create_simple_fabfile():
-    fab = f'''\
-{FAB_TEST_EXE} <- {FAB_TEST_SRC} {{
-    cc -o {FAB_TEST_EXE} {FAB_TEST_SRC};
-}}
-'''
-
     with open(FABFILE, mode='x') as fabfile:
         fabfile.write(fab)
 
 
-def run_fab():
-    subprocess.run('./fab')
+def run_fab(target):
+    return subprocess.run(f'./fab {target}'.split(), capture_output=True)
 
 
-def check_executable():
-    pass
+def check_output(actual):
+    assert '1\n2\n3\n' == actual.decode()
 
 
 def cleanup():
-    for f in [FAB_TEST_EXE, FAB_TEST_SRC, FABFILE]:
+    for f in [FABFILE]:
         os.remove(f)
 
 
 if __name__ == '__main__':
-    create_simple_program_file()
-    create_simple_fabfile()
-    run_fab()
-    check_executable()
+    create_fabfile_with_deps()
+    handle = run_fab('foo')
+    check_output(handle.stdout)
     cleanup()
