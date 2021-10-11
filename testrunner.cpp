@@ -90,8 +90,8 @@ TEST(Parser, ItParsesARule) {
   auto actual = parse(std::move(tokens));
 
   auto expected = Environment{{{.target = "main",
-                                .action = "c++ -o main main.cpp",
-                                .dependency = "main.cpp"}}};
+                                .dependency = "main.cpp",
+                                .action = "c++ -o main main.cpp"}}};
 
   ASSERT_EQ(expected, actual);
 }

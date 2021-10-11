@@ -31,8 +31,8 @@ struct Token {
 
 struct Rule {
   std::string_view target;
-  const std::string action;
   std::string_view dependency;
+  const std::string action;
 
   friend bool operator==(const Rule &, const Rule &) = default;
 };
@@ -79,53 +79,7 @@ std::vector<Token> lex(std::string_view source);
 // <dep>        ::= iden
 // <action>     ::= iden_list
 // <iden_list>  ::= iden semicolon
+// <iden_list>  ::= macro semicolon
 // <iden_list>  ::= iden space <iden_list>
+// <iden_list>  ::= macro space <iden_list>
 Environment parse(std::vector<Token> &&tokens);
-
-namespace detail {
-struct LexError final : public std::runtime_error {
-  const char *msg;
-
-  LexError(const char *m);
-  const char *what() noexcept;
-};
-
-class LexState {
-  std::string_view m_buf;
-  std::size_t m_offset = 0;
-  bool m_eof = false;
-
-public:
-  LexState(std::string_view);
-  Option<char> next();
-  bool eof() const;
-  void eat(char expected);
-  std::tuple<std::size_t, std::size_t>
-  eat_until(std::function<bool(char)> pred);
-  std::string_view extract_lexeme(std::size_t begin, std::size_t end);
-  Option<char> peek() const;
-};
-
-class ParseState {
-  std::vector<Token> m_tokens;
-  std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
-  Environment m_env;
-
-  void stmt();
-  void assignment();
-  void rule();
-  std::string_view target();
-  std::string_view dependency();
-  std::string action();
-  std::string iden_list();
-  void iden();
-
-  const Token &expect(TokenType);
-
-public:
-  ParseState(std::vector<Token> &&tokens);
-  Environment env() &&;
-  bool eof();
-  void stmt_list();
-};
-} // namespace detail

@@ -2,9 +2,151 @@
 #include <cctype>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <ranges>
+#include <variant>
+#include <vector>
 
 #include "fab.h"
+
+namespace detail {
+struct NeedsResolution {
+  std::string_view iden;
+};
+
+struct Terminal {
+  std::string_view iden;
+};
+
+bool
+operator<(const NeedsResolution &lhs, const NeedsResolution &rhs) {
+  return lhs.iden < rhs.iden;
+}
+
+bool
+operator<(const NeedsResolution &lhs, const Terminal &rhs) {
+  return lhs.iden < rhs.iden;
+}
+
+bool
+operator<(const Terminal &lhs, const NeedsResolution &rhs) {
+  return lhs.iden < rhs.iden;
+}
+
+bool
+operator<(const Terminal &lhs, const Terminal &rhs) {
+  return lhs.iden < rhs.iden;
+}
+
+using ResolutionStatus = std::variant<NeedsResolution, Terminal>;
+
+// Intermediate representation for Rules -- after parsing they'll need to be
+// resolved by looking each `NeedsResolution` variant up in the environment.
+struct RuleIr {
+  ResolutionStatus target;
+  ResolutionStatus dependency;
+  std::vector<ResolutionStatus> action;
+};
+
+bool
+operator<(const RuleIr &lhs, const RuleIr &rhs) {
+  return lhs.target < rhs.target;
+}
+
+struct LexError final : public std::runtime_error {
+  const char *msg;
+
+  LexError(const char *m);
+  const char *what() noexcept;
+};
+
+class LexState {
+  std::string_view m_buf;
+  std::size_t m_offset = 0;
+  bool m_eof = false;
+
+public:
+  LexState(std::string_view);
+  Option<char> next();
+  bool eof() const;
+  void eat(char expected);
+  std::tuple<std::size_t, std::size_t>
+  eat_until(std::function<bool(char)> pred);
+  std::string_view extract_lexeme(std::size_t begin, std::size_t end);
+  Option<char> peek() const;
+};
+
+class ParseState {
+  std::vector<Token> m_tokens;
+  std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
+  std::set<RuleIr> rules;
+  std::map<std::string_view, std::string_view> macros;
+
+  void stmt();
+  void assignment();
+  void rule();
+  ResolutionStatus target();
+  ResolutionStatus dependency();
+  std::vector<ResolutionStatus> action();
+  std::string iden_list();
+  void iden();
+  ResolutionStatus iden_status();
+  std::optional<TokenType> peek() const;
+
+  const Token &eat(TokenType);
+
+public:
+  ParseState(std::vector<Token> &&tokens);
+  std::tuple<std::set<RuleIr>, std::map<std::string_view, std::string_view>>
+  destructure() {
+    auto rules = std::exchange(this->rules, {});
+    auto macros = std::exchange(this->macros, {});
+
+    return std::tie(rules, macros);
+  }
+
+  bool eof() const;
+  void stmt_list();
+};
+
+struct Resolver {
+  const std::map<std::string_view, std::string_view> macros;
+
+  std::string_view operator()(const Terminal &term) const {
+    return term.iden;
+  }
+
+  std::string_view operator()(const NeedsResolution &res) const {
+    // TODO stub
+    return res.iden;
+  }
+};
+
+Environment
+resolve(ParseState state) {
+  auto env = Environment{};
+  auto [rules, macros] = state.destructure();
+  const auto visitor = Resolver{std::move(macros)};
+  auto visitc = [&visitor](auto arg) { return std::visit(visitor, arg); };
+
+  for (const auto &rule : rules) {
+    auto target = visitc(rule.target);
+    auto dependency = visitc(rule.dependency);
+
+    std::string action;
+    for (auto iden : rule.action | std::views::transform(visitc)) {
+      action += iden;
+      action.push_back(' ');
+    }
+
+    action.pop_back();
+
+    env.insert({.target = target, .dependency = dependency, .action = action});
+  }
+
+  return env;
+}
+} // namespace detail
 
 namespace detail {
 LexError::LexError(const char *m)
@@ -85,19 +227,14 @@ ParseState::ParseState(std::vector<Token> &&tokens)
     : m_tokens(tokens) {
 }
 
-Environment
-ParseState::env() && {
-  return std::exchange(m_env, {});
-}
-
 bool
-ParseState::eof() {
+ParseState::eof() const {
   assert(m_offset != m_tokens.cend());
   return m_offset->token_type == TokenType::Eof;
 }
 
 const Token &
-ParseState::expect(TokenType tt) {
+ParseState::eat(TokenType tt) {
   const auto &token = *m_offset;
 
   if (tt != token.token_type) {
@@ -115,46 +252,71 @@ ParseState::stmt_list() {
 
 void
 ParseState::rule() {
-  std::string_view target = this->target();
-  expect(TokenType::Arrow);
-  std::string_view dependency = this->dependency();
-  expect(TokenType::LBrace);
-  std::string action = this->action();
-  expect(TokenType::RBrace);
+  ResolutionStatus target = this->target();
+  eat(TokenType::Arrow);
+  ResolutionStatus dependency = this->dependency();
+  eat(TokenType::LBrace);
+  std::vector<ResolutionStatus> action = this->action();
+  eat(TokenType::RBrace);
 
-  m_env.insert({.target = target, .action = action, .dependency = dependency});
+  rules.insert({.target = target, .dependency = dependency, .action = action});
 }
 
-std::string_view
+std::optional<TokenType>
+ParseState::peek() const {
+  if (eof()) {
+    return {};
+  } else {
+    return m_offset->token_type;
+  }
+}
+
+ResolutionStatus
+ParseState::iden_status() {
+  auto peeked = peek();
+
+  if (TokenType::Iden == peeked) {
+    return Terminal{eat(TokenType::Iden).lexeme.value()};
+  } else if (TokenType::Macro == peeked) {
+    return NeedsResolution{eat(TokenType::Macro).lexeme.value()};
+  } else {
+    throw std::runtime_error("Unexpected token");
+  }
+}
+
+ResolutionStatus
 ParseState::target() {
-  return expect(TokenType::Iden).lexeme.value();
-};
-
-std::string_view
-ParseState::dependency() {
-  return expect(TokenType::Iden).lexeme.value();
+  return iden_status();
 }
 
-std::string
+ResolutionStatus
+ParseState::dependency() {
+  return iden_status();
+}
+
+bool
+matches(TokenType) {
+  return false;
+}
+
+template <typename... Tl>
+bool
+matches(TokenType expected, TokenType head, Tl... tail) {
+  return expected == head || matches(expected, tail...);
+}
+
+std::vector<ResolutionStatus>
 ParseState::action() {
-  // Pretty much foldl, but that's not until C++23:
-  // http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p2214r0.html#stdaccumulate-rangesfold
-  std::string action;
-  for (auto w :
-       m_tokens | std::views::drop(m_offset - m_tokens.begin()) |
-           std::views::take_while(
-               [](const Token &t) { return t.token_type == TokenType::Iden; }) |
-           std::views::transform([](const Token &t) -> std::string_view {
-             return t.lexeme.value();
-           })) {
-    expect(TokenType::Iden);
-    action += w;
-    action.push_back(' ');
+  std::vector<ResolutionStatus> action;
+
+  auto peeked = peek();
+  while (peeked.has_value() &&
+         matches(peeked.value(), TokenType::Iden, TokenType::Macro)) {
+    action.push_back(iden_status());
+    peeked = peek();
   }
 
-  action.pop_back();
-
-  expect(TokenType::SemiColon);
+  eat(TokenType::SemiColon);
   return action;
 }
 
@@ -233,7 +395,7 @@ parse(std::vector<Token> &&tokens) {
     state.stmt_list();
   }
 
-  return std::move(state).env();
+  return resolve(std::move(state));
 }
 
 void
