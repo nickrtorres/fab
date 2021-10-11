@@ -195,7 +195,9 @@ const Rule &Environment::get(std::string_view name) const {
   auto it = rules.find(name);
 
   if (it == rules.cend()) {
-    throw std::runtime_error("No such rule!");
+    auto n = std::string(name.begin(), name.end());
+    const std::string m = "No such rule => " + n + "!";
+    throw std::runtime_error(m);
   } else {
     return *it;
   }

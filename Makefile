@@ -15,7 +15,7 @@ fab: fab.o main.o
 check: unit integration
 
 integration: testrunner fab
-	python3 integration.py
+	cd test && python3 integration.py
 
 unit: testrunner
 	./testrunner

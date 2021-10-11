@@ -1,0 +1,11 @@
+foo <- bar {
+    echo 3;
+}
+
+bar <- baz {
+    echo 2;
+}
+
+baz <- qux {
+    echo 1;
+}

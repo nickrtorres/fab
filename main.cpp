@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unistd.h>
 #include <utility>
 
 #include "fab.h"
@@ -53,18 +54,29 @@ int main(int argc, char **argv) {
     return 1;
   };
 
-  const std::string FABFILE = "Fabfile";
-
-  if (argc != 2) {
-    return fail("specify target to build.");
+  std::string fabfile = "Fabfile";
+  int ch = {};
+  while ((ch = getopt(argc, argv, "f:")) != -1) {
+    switch (ch) {
+    case 'f':
+      fabfile = optarg;
+      break;
+    case '?':
+    default:
+      return fail("usuage: fab [-f <Fabfile>] target");
+    }
   }
 
-  if (!std::filesystem::exists(FABFILE)) {
+  if (!std::filesystem::exists(fabfile)) {
     return fail("Fabfile not found.");
   }
 
-  const std::string target = argv[1];
-  std::ifstream handle(FABFILE);
+  if (optind >= argc) {
+    return fail("specify target to build");
+  }
+
+  const std::string target = argv[optind];
+  std::ifstream handle(fabfile);
 
   if (!handle.is_open()) {
     return fail("could not open Fabfile.");
