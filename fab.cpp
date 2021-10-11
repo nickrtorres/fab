@@ -7,19 +7,23 @@
 #include "fab.h"
 
 namespace detail {
-LexError::LexError(const char *m) : std::runtime_error(m), msg(m) {}
+LexError::LexError(const char *m)
+    : std::runtime_error(m)
+    , msg(m) {
+}
 
-const char *LexError::what() noexcept { return msg; }
+const char *
+LexError::what() noexcept {
+  return msg;
+}
 
-LexState::LexState(std::string_view source) : m_buf(source) {}
+LexState::LexState(std::string_view source)
+    : m_buf(source) {
+}
 
-Option<char> LexState::next() {
-  if (m_eof) {
-    return {};
-  }
-
-  if (m_offset == m_buf.size()) {
-    m_eof = true;
+Option<char>
+LexState::next() {
+  if (eof()) {
     return {};
   }
 
@@ -28,9 +32,13 @@ Option<char> LexState::next() {
   return m_buf[old];
 }
 
-bool LexState::eof() const { return this->m_eof; }
+bool
+LexState::eof() const {
+  return m_offset == m_buf.size();
+}
 
-void LexState::eat(char expected) {
+void
+LexState::eat(char expected) {
   if (expected != m_buf[m_offset]) {
     throw LexError("bad token");
   }
@@ -38,22 +46,23 @@ void LexState::eat(char expected) {
   assert(next().has_value());
 }
 
-Option<char> LexState::peek() const {
-  if (m_eof) {
+Option<char>
+LexState::peek() const {
+  if (eof()) {
     return {};
   } else {
     return m_buf[m_offset];
   }
 }
 
-std::string_view LexState::extract_lexeme(std::size_t begin, std::size_t end) {
+std::string_view
+LexState::extract_lexeme(std::size_t begin, std::size_t end) {
   return std::string_view{m_buf.begin() + begin, m_buf.begin() + end};
 }
 
 std::tuple<std::size_t, std::size_t>
 LexState::eat_until(std::function<bool(char)> pred) {
-  assert(m_offset != 0);
-  std::size_t begin = m_offset - 1;
+  std::size_t begin = m_offset;
   std::size_t end = m_buf.size();
 
   bool done = false;
@@ -72,16 +81,23 @@ LexState::eat_until(std::function<bool(char)> pred) {
   return {begin, end};
 }
 
-ParseState::ParseState(std::vector<Token> &&tokens) : m_tokens(tokens) {}
+ParseState::ParseState(std::vector<Token> &&tokens)
+    : m_tokens(tokens) {
+}
 
-Environment ParseState::env() && { return std::exchange(m_env, {}); }
+Environment
+ParseState::env() && {
+  return std::exchange(m_env, {});
+}
 
-bool ParseState::eof() {
+bool
+ParseState::eof() {
   assert(m_offset != m_tokens.cend());
   return m_offset->token_type == TokenType::Eof;
 }
 
-const Token &ParseState::expect(TokenType tt) {
+const Token &
+ParseState::expect(TokenType tt) {
   const auto &token = *m_offset;
 
   if (tt != token.token_type) {
@@ -92,7 +108,13 @@ const Token &ParseState::expect(TokenType tt) {
   return token;
 }
 
-void ParseState::rule() {
+void
+ParseState::stmt_list() {
+  rule();
+}
+
+void
+ParseState::rule() {
   std::string_view target = this->target();
   expect(TokenType::Arrow);
   std::string_view dependency = this->dependency();
@@ -103,15 +125,18 @@ void ParseState::rule() {
   m_env.insert({.target = target, .action = action, .dependency = dependency});
 }
 
-std::string_view ParseState::target() {
+std::string_view
+ParseState::target() {
   return expect(TokenType::Iden).lexeme.value();
 };
 
-std::string_view ParseState::dependency() {
+std::string_view
+ParseState::dependency() {
   return expect(TokenType::Iden).lexeme.value();
 }
 
-std::string ParseState::action() {
+std::string
+ParseState::action() {
   // Pretty much foldl, but that's not until C++23:
   // http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p2214r0.html#stdaccumulate-rangesfold
   std::string action;
@@ -133,42 +158,67 @@ std::string ParseState::action() {
   return action;
 }
 
-void ParseState::iden_list() {}
+std::string
+ParseState::iden_list() {
+  return {};
+}
 } // namespace detail
 
-std::vector<Token> lex(std::string_view source) {
+std::vector<Token>
+lex(std::string_view source) {
   detail::LexState state{source};
   auto tokens = std::vector<Token>{};
 
   while (!state.eof()) {
-    auto c = state.next();
-    if (!c) {
+    auto current = state.peek();
+    if (!current) {
       break;
     }
 
-    switch (c.value()) {
+    switch (current.value()) {
+    case '\t':
+      [[fallthrough]];
+    case '\n':
+      [[fallthrough]];
+    case ' ':
+      state.next();
+      break;
+    case ':':
+      state.next();
+      state.eat('=');
+      tokens.push_back({TokenType::Eq, {}});
+      break;
     case ';':
+      state.next();
       tokens.push_back({TokenType::SemiColon, {}});
       break;
     case '{':
+      state.next();
       tokens.push_back({TokenType::LBrace, {}});
       break;
     case '}':
+      state.next();
       tokens.push_back({TokenType::RBrace, {}});
       break;
     case '<':
+      state.next();
       state.eat('-');
       tokens.push_back({TokenType::Arrow, {}});
       break;
-    case '\t':
-    case '\n':
-    case ' ':
+    case '$': {
+      state.next();
+      state.eat('(');
+      auto [begin, end] = state.eat_until([](char c) { return c == ')'; });
+      tokens.emplace_back(TokenType::Macro, state.extract_lexeme(begin, end));
+      state.eat(')');
       break;
-    default:
+    }
+    default: {
       auto [begin, end] = state.eat_until(
           [](char c) { return c == ' ' || c == '\n' || c == ';'; });
       tokens.emplace_back(TokenType::Iden, state.extract_lexeme(begin, end));
       break;
+    }
     }
   }
 
@@ -176,22 +226,28 @@ std::vector<Token> lex(std::string_view source) {
   return tokens;
 }
 
-Environment parse(std::vector<Token> &&tokens) {
+Environment
+parse(std::vector<Token> &&tokens) {
   auto state = detail::ParseState{std::move(tokens)};
   while (!state.eof()) {
-    state.rule();
+    state.stmt_list();
   }
 
   return std::move(state).env();
 }
 
-void Environment::insert(Rule &&rule) { rules.emplace(std::move(rule)); }
+void
+Environment::insert(Rule &&rule) {
+  rules.emplace(std::move(rule));
+}
 
-bool Environment::is_terminal(std::string_view rule) const {
+bool
+Environment::is_terminal(std::string_view rule) const {
   return !rules.contains(rule);
 }
 
-const Rule &Environment::get(std::string_view name) const {
+const Rule &
+Environment::get(std::string_view name) const {
   auto it = rules.find(name);
 
   if (it == rules.cend()) {

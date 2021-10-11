@@ -1,0 +1,8 @@
+BasedOnStyle: LLVM
+
+Standard: Latest
+
+AllowShortFunctionsOnASingleLine: None
+AlwaysBreakAfterReturnType: TopLevelDefinitions
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeComma

@@ -8,15 +8,18 @@
 #include <tuple>
 #include <vector>
 
-template <typename T> using Option = std::optional<T>;
+template <typename T>
+using Option = std::optional<T>;
 
 enum class TokenType {
   Arrow,
+  Eof,
+  Eq,
   Iden,
   LBrace,
+  Macro,
   RBrace,
   SemiColon,
-  Eof,
 };
 
 struct Token {
@@ -34,15 +37,18 @@ struct Rule {
   friend bool operator==(const Rule &, const Rule &) = default;
 };
 
-inline bool operator<(const Rule &lhs, std::string_view rhs) {
+inline bool
+operator<(const Rule &lhs, std::string_view rhs) {
   return lhs.target < rhs;
 }
 
-inline bool operator<(std::string_view lhs, const Rule &rhs) {
+inline bool
+operator<(std::string_view lhs, const Rule &rhs) {
   return lhs < rhs.target;
 }
 
-inline bool operator<(const Rule &lhs, const Rule &rhs) {
+inline bool
+operator<(const Rule &lhs, const Rule &rhs) {
   return lhs.target < rhs.target;
 }
 
@@ -57,13 +63,23 @@ struct Environment {
 
 std::vector<Token> lex(std::string_view source);
 
-// <rule>      ::= <target> arrow <dep> lbrace <action> rbrace
-// <rule>      ::= <target> lbrace <action> rbrace
-// <target>    ::= iden
-// <dep>       ::= iden
-// <action>    ::= iden_list
-// <iden_list> ::= iden semicolon
-// <iden_list> ::= iden space <iden_list>
+// Fab's grammar allows two main non-terminals: assignment and rule statements.
+// Parsing produces an environment that maps the schema specified by a fabfile
+// into proper C++ types.
+//
+// <Fabfile>    ::= <stmt_list>
+// <stmt_list>  ::= <stmt> <stmt_list>
+// <stmt_list>  ::= <stmt>
+// <stmt>       ::= <assignment>
+// <stmt>       ::= <rule>
+// <assignment> ::= <iden> := <iden_list>
+// <rule>       ::= <target> <- <dep> lbrace <action> rbrace
+// <rule>       ::= <target> lbrace <action> rbrace
+// <target>     ::= iden
+// <dep>        ::= iden
+// <action>     ::= iden_list
+// <iden_list>  ::= iden semicolon
+// <iden_list>  ::= iden space <iden_list>
 Environment parse(std::vector<Token> &&tokens);
 
 namespace detail {
@@ -95,17 +111,21 @@ class ParseState {
   std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
   Environment m_env;
 
+  void stmt();
+  void assignment();
+  void rule();
   std::string_view target();
   std::string_view dependency();
   std::string action();
-  void iden_list();
+  std::string iden_list();
+  void iden();
 
   const Token &expect(TokenType);
 
 public:
   ParseState(std::vector<Token> &&tokens);
   Environment env() &&;
-  void rule();
   bool eof();
+  void stmt_list();
 };
 } // namespace detail

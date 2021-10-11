@@ -2,7 +2,8 @@
 #include <gtest/gtest.h>
 #include <iostream>
 
-std::ostream &operator<<(std::ostream &os, const Token &t) {
+std::ostream &
+operator<<(std::ostream &os, const Token &t) {
   if (t.lexeme.has_value()) {
     return os << t.lexeme.value();
   }
@@ -25,12 +26,14 @@ std::ostream &operator<<(std::ostream &os, const Token &t) {
   }
 }
 
-std::ostream &operator<<(std::ostream &os, const Rule &r) {
+std::ostream &
+operator<<(std::ostream &os, const Rule &r) {
   return os << "{ .target = " << r.target << ", .action = " << r.action
             << ", .dependency = " << r.dependency << "}" << std::endl;
 }
 
-std::ostream &operator<<(std::ostream &os, const Environment &env) {
+std::ostream &
+operator<<(std::ostream &os, const Environment &env) {
   for (auto r : env.rules) {
     os << r;
   }
@@ -74,6 +77,14 @@ TEST(Lexer, ItRecognizesAFullRule) {
   ASSERT_EQ(expected, actual);
 }
 
+TEST(Lexer, ItRecognizesMacros) {
+  auto actual = lex("$(CC)");
+
+  auto expected =
+      std::vector<Token>{{TokenType::Macro, "CC"}, {TokenType::Eof, {}}};
+  ASSERT_EQ(expected, actual);
+}
+
 TEST(Parser, ItParsesARule) {
   auto tokens = lex("main <- main.cpp { c++ -o main main.cpp; }");
   auto actual = parse(std::move(tokens));
@@ -85,7 +96,8 @@ TEST(Parser, ItParsesARule) {
   ASSERT_EQ(expected, actual);
 }
 
-int main(int argc, char **argv) {
+int
+main(int argc, char **argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
