@@ -56,24 +56,79 @@ operator<(const RuleIr &lhs, const RuleIr &rhs) {
 struct LexError final : public std::runtime_error {
   const char *msg;
 
-  LexError(const char *m);
-  const char *what() noexcept;
+  LexError(const char *m)
+      : std::runtime_error(m)
+      , msg(m) {
+  }
+
+  const char *what() noexcept {
+    return msg;
+  }
 };
 
 class LexState {
   std::string_view m_buf;
   std::size_t m_offset = 0;
-  bool m_eof = false;
 
 public:
-  LexState(std::string_view);
-  Option<char> next();
-  bool eof() const;
-  void eat(char expected);
+  LexState(std::string_view source)
+      : m_buf(source) {
+  }
+
+  Option<char> next() {
+    if (eof()) {
+      return {};
+    }
+
+    const auto old = m_offset;
+    m_offset += 1;
+    return m_buf[old];
+  }
+
+  bool eof() const {
+    return m_offset == m_buf.size();
+  }
+
+  void eat(char expected) {
+    if (expected != m_buf[m_offset]) {
+      throw LexError("bad token");
+    }
+
+    assert(next().has_value());
+  }
+
+  Option<char> peek() const {
+    if (eof()) {
+      return {};
+    } else {
+      return m_buf[m_offset];
+    }
+  }
+
+  std::string_view extract_lexeme(std::size_t begin, std::size_t end) {
+    return std::string_view{m_buf.begin() + begin, m_buf.begin() + end};
+  }
+
   std::tuple<std::size_t, std::size_t>
-  eat_until(std::function<bool(char)> pred);
-  std::string_view extract_lexeme(std::size_t begin, std::size_t end);
-  Option<char> peek() const;
+  eat_until(std::function<bool(char)> pred) {
+    std::size_t begin = m_offset;
+    std::size_t end = m_buf.size();
+
+    bool done = false;
+    while (!done) {
+      auto n = peek();
+      if (!n) {
+        done = true;
+      } else if (pred(n.value())) {
+        end = m_offset;
+        done = true;
+      } else {
+        [[maybe_unused]] auto dontcare = next();
+      }
+    }
+
+    return {begin, end};
+  }
 };
 
 class ParseState {
@@ -82,21 +137,98 @@ class ParseState {
   std::set<RuleIr> rules;
   std::map<std::string_view, std::string_view> macros;
 
-  void stmt();
-  void assignment();
-  void rule();
-  ResolutionStatus target();
-  ResolutionStatus dependency();
-  std::vector<ResolutionStatus> action();
-  std::string iden_list();
-  void iden();
-  ResolutionStatus iden_status();
-  std::optional<TokenType> peek() const;
+  const Token &eat(TokenType tt) {
+    const auto &token = *m_offset;
 
-  const Token &eat(TokenType);
+    if (tt != token.token_type) {
+      throw std::runtime_error("FIXME");
+    }
+
+    m_offset = std::next(m_offset);
+    return token;
+  }
+
+  void rule() {
+    ResolutionStatus target = this->target();
+    eat(TokenType::Arrow);
+    ResolutionStatus dependency = this->dependency();
+    eat(TokenType::LBrace);
+    std::vector<ResolutionStatus> action = this->action();
+    eat(TokenType::RBrace);
+
+    rules.insert(
+        {.target = target, .dependency = dependency, .action = action});
+  }
+
+  std::optional<TokenType> peek() const {
+    if (eof()) {
+      return {};
+    } else {
+      return m_offset->token_type;
+    }
+  }
+
+  ResolutionStatus iden_status() {
+    auto peeked = peek();
+
+    if (TokenType::Iden == peeked) {
+      return Terminal{eat(TokenType::Iden).lexeme.value()};
+    } else if (TokenType::Macro == peeked) {
+      return NeedsResolution{eat(TokenType::Macro).lexeme.value()};
+    } else {
+      throw std::runtime_error("Unexpected token");
+    }
+  }
+
+  ResolutionStatus target() {
+    return iden_status();
+  }
+
+  ResolutionStatus dependency() {
+    return iden_status();
+  }
+
+  bool matches(TokenType) {
+    return false;
+  }
+
+  template <typename... Tl>
+  bool matches(TokenType expected, TokenType head, Tl... tail) {
+    return expected == head || matches(expected, tail...);
+  }
+
+  std::vector<ResolutionStatus> action() {
+    std::vector<ResolutionStatus> action;
+
+    auto peeked = peek();
+    while (peeked.has_value() &&
+           matches(peeked.value(), TokenType::Iden, TokenType::Macro)) {
+      action.push_back(iden_status());
+      peeked = peek();
+    }
+
+    eat(TokenType::SemiColon);
+    return action;
+  }
+
+  std::string iden_list() {
+    return {};
+  }
 
 public:
-  ParseState(std::vector<Token> &&tokens);
+  ParseState(std::vector<Token> &&tokens)
+      : m_tokens(tokens) {
+  }
+
+  void stmt_list() {
+    rule();
+  }
+
+  bool eof() const {
+    assert(m_offset != m_tokens.cend());
+    return m_offset->token_type == TokenType::Eof;
+  }
+
   std::tuple<std::set<RuleIr>, std::map<std::string_view, std::string_view>>
   destructure() {
     auto rules = std::exchange(this->rules, {});
@@ -104,9 +236,6 @@ public:
 
     return std::tie(rules, macros);
   }
-
-  bool eof() const;
-  void stmt_list();
 };
 
 struct Resolver {
@@ -145,184 +274,6 @@ resolve(ParseState state) {
   }
 
   return env;
-}
-} // namespace detail
-
-namespace detail {
-LexError::LexError(const char *m)
-    : std::runtime_error(m)
-    , msg(m) {
-}
-
-const char *
-LexError::what() noexcept {
-  return msg;
-}
-
-LexState::LexState(std::string_view source)
-    : m_buf(source) {
-}
-
-Option<char>
-LexState::next() {
-  if (eof()) {
-    return {};
-  }
-
-  const auto old = m_offset;
-  m_offset += 1;
-  return m_buf[old];
-}
-
-bool
-LexState::eof() const {
-  return m_offset == m_buf.size();
-}
-
-void
-LexState::eat(char expected) {
-  if (expected != m_buf[m_offset]) {
-    throw LexError("bad token");
-  }
-
-  assert(next().has_value());
-}
-
-Option<char>
-LexState::peek() const {
-  if (eof()) {
-    return {};
-  } else {
-    return m_buf[m_offset];
-  }
-}
-
-std::string_view
-LexState::extract_lexeme(std::size_t begin, std::size_t end) {
-  return std::string_view{m_buf.begin() + begin, m_buf.begin() + end};
-}
-
-std::tuple<std::size_t, std::size_t>
-LexState::eat_until(std::function<bool(char)> pred) {
-  std::size_t begin = m_offset;
-  std::size_t end = m_buf.size();
-
-  bool done = false;
-  while (!done) {
-    auto n = peek();
-    if (!n) {
-      done = true;
-    } else if (pred(n.value())) {
-      end = m_offset;
-      done = true;
-    } else {
-      [[maybe_unused]] auto dontcare = next();
-    }
-  }
-
-  return {begin, end};
-}
-
-ParseState::ParseState(std::vector<Token> &&tokens)
-    : m_tokens(tokens) {
-}
-
-bool
-ParseState::eof() const {
-  assert(m_offset != m_tokens.cend());
-  return m_offset->token_type == TokenType::Eof;
-}
-
-const Token &
-ParseState::eat(TokenType tt) {
-  const auto &token = *m_offset;
-
-  if (tt != token.token_type) {
-    throw std::runtime_error("FIXME");
-  }
-
-  m_offset = std::next(m_offset);
-  return token;
-}
-
-void
-ParseState::stmt_list() {
-  rule();
-}
-
-void
-ParseState::rule() {
-  ResolutionStatus target = this->target();
-  eat(TokenType::Arrow);
-  ResolutionStatus dependency = this->dependency();
-  eat(TokenType::LBrace);
-  std::vector<ResolutionStatus> action = this->action();
-  eat(TokenType::RBrace);
-
-  rules.insert({.target = target, .dependency = dependency, .action = action});
-}
-
-std::optional<TokenType>
-ParseState::peek() const {
-  if (eof()) {
-    return {};
-  } else {
-    return m_offset->token_type;
-  }
-}
-
-ResolutionStatus
-ParseState::iden_status() {
-  auto peeked = peek();
-
-  if (TokenType::Iden == peeked) {
-    return Terminal{eat(TokenType::Iden).lexeme.value()};
-  } else if (TokenType::Macro == peeked) {
-    return NeedsResolution{eat(TokenType::Macro).lexeme.value()};
-  } else {
-    throw std::runtime_error("Unexpected token");
-  }
-}
-
-ResolutionStatus
-ParseState::target() {
-  return iden_status();
-}
-
-ResolutionStatus
-ParseState::dependency() {
-  return iden_status();
-}
-
-bool
-matches(TokenType) {
-  return false;
-}
-
-template <typename... Tl>
-bool
-matches(TokenType expected, TokenType head, Tl... tail) {
-  return expected == head || matches(expected, tail...);
-}
-
-std::vector<ResolutionStatus>
-ParseState::action() {
-  std::vector<ResolutionStatus> action;
-
-  auto peeked = peek();
-  while (peeked.has_value() &&
-         matches(peeked.value(), TokenType::Iden, TokenType::Macro)) {
-    action.push_back(iden_status());
-    peeked = peek();
-  }
-
-  eat(TokenType::SemiColon);
-  return action;
-}
-
-std::string
-ParseState::iden_list() {
-  return {};
 }
 } // namespace detail
 
@@ -395,7 +346,7 @@ parse(std::vector<Token> &&tokens) {
     state.stmt_list();
   }
 
-  return resolve(std::move(state));
+  return detail::resolve(std::move(state));
 }
 
 void
