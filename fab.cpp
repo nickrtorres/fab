@@ -176,7 +176,7 @@ struct FabError final : std::runtime_error {
       std::variant<UnexpectedCharacter, UnexpectedTokenType, UndefinedVariable,
                    TokenNotInExpectedSet, UnknownTarget, ExpectedLValue>;
 
-  FabError(const ErrTy &ty)
+  explicit FabError(const ErrTy &ty)
       : std::runtime_error(std::visit(GetErrMsg{}, ty)) {
   }
 };
