@@ -174,8 +174,8 @@ struct FabError final : std::runtime_error {
   };
 
   using ErrTy =
-      std::variant<UnexpectedCharacter, UnexpectedTokenType, UndefinedVariable,
-                   TokenNotInExpectedSet, UnknownTarget, ExpectedLValue>;
+      std::variant<ExpectedLValue, TokenNotInExpectedSet, UndefinedVariable,
+                   UnexpectedCharacter, UnexpectedTokenType, UnknownTarget>;
 
   explicit FabError(const ErrTy &ty)
       : std::runtime_error(std::visit(GetErrMsg{}, ty)) {
