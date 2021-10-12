@@ -1,7 +1,6 @@
 #include <array>
 #include <cassert>
 #include <cctype>
-#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
@@ -185,7 +184,7 @@ struct FabError final : std::runtime_error {
 
 class LexState {
   std::string_view m_buf;
-  std::size_t m_offset = 0;
+  std::string_view::const_iterator m_offset = m_buf.cbegin();
 
 public:
   LexState(std::string_view source)
@@ -197,19 +196,19 @@ public:
       return {};
     }
 
-    const auto old = m_offset;
-    m_offset += 1;
-    return m_buf[old];
+    char c = *m_offset;
+    m_offset = std::next(m_offset);
+    return c;
   }
 
   bool eof() const {
-    return m_offset == m_buf.size();
+    return m_offset == m_buf.cend();
   }
 
   void eat(char expected) {
-    if (expected != m_buf[m_offset]) {
+    if (expected != *m_offset) {
       throw FabError(FabError::UnexpectedCharacter{.expected = expected,
-                                                   .actual = m_buf[m_offset]});
+                                                   .actual = *m_offset});
     }
 
     assert(next().has_value());
@@ -220,17 +219,16 @@ public:
       return {};
     }
 
-    return m_buf[m_offset];
+    return *m_offset;
   }
 
-  std::string_view extract_lexeme(std::size_t begin, std::size_t end) {
-    return std::string_view{m_buf.begin() + begin, m_buf.begin() + end};
+  std::string_view extract_lexeme(auto begin, auto end) {
+    return std::string_view{begin, end};
   }
 
-  std::tuple<std::size_t, std::size_t>
-  eat_until(std::function<bool(char)> pred) {
-    std::size_t begin = m_offset;
-    std::size_t end = m_buf.size();
+  auto eat_until(std::function<bool(char)> pred) {
+    const auto begin = m_offset;
+    auto end = m_buf.cend();
 
     bool done = false;
     while (!done) {
@@ -245,7 +243,7 @@ public:
       }
     }
 
-    return {begin, end};
+    return std::tuple{begin, end};
   }
 };
 
