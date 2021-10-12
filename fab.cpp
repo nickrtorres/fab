@@ -100,19 +100,16 @@ operator<(const RuleIr &lhs, const RuleIr &rhs) {
 }
 
 struct FabError final : std::runtime_error {
-  template <typename T>
+  template <typename T, typename U>
   struct Unexpected {
     T expected;
-    T actual;
+    U actual;
   };
 
-  using UnexpectedCharacter = Unexpected<char>;
-  using UnexpectedTokenType = Unexpected<TokenType>;
-
-  struct TokenNotInExpectedSet {
-    std::vector<Option<TokenType>> expected;
-    Option<TokenType> actual;
-  };
+  using UnexpectedCharacter = Unexpected<char, char>;
+  using UnexpectedTokenType = Unexpected<TokenType, TokenType>;
+  using TokenNotInExpectedSet =
+      Unexpected<std::vector<Option<TokenType>>, Option<TokenType>>;
 
   struct UndefinedVariable {
     std::string_view var;
@@ -124,13 +121,14 @@ struct FabError final : std::runtime_error {
 
   struct GetErrMsg {
     template <typename T>
-    std::string operator()(const Unexpected<T> &u) {
+    std::string operator()(const Unexpected<T, T> &u) {
       std::stringstream ss;
       ss << "expected: " << u.expected << "; got: " << u.actual;
       return ss.str();
     }
 
-    std::string operator()(const TokenNotInExpectedSet &u) {
+    template <typename T>
+    std::string operator()(const Unexpected<std::vector<T>, T> &u) {
       std::stringstream ss;
       ss << "expected one of: {";
 
