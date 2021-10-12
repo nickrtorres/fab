@@ -76,6 +76,17 @@ TEST(Parser, ItParsesARule) {
   ASSERT_EQ(expected, actual);
 }
 
+TEST(Parser, ItLooksUpMacros) {
+  auto tokens = lex("CC := cc; main <- main.c { $(CC) -o main main.c; }");
+  auto actual = parse(std::move(tokens));
+
+  auto expected = Environment{{{.target = "main",
+                                .dependency = "main.c",
+                                .action = "cc -o main main.c"}}};
+
+  ASSERT_EQ(expected, actual);
+}
+
 TEST(Parser, ItExpectsSemicolons) {
   auto tokens = lex("main <- main.cpp { c++ -o main main.cpp }");
   ASSERT_THROW(parse(std::move(tokens)), std::runtime_error);

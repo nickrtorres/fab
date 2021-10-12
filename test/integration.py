@@ -1,33 +1,53 @@
 #!/usr/bin/env python3
 import subprocess
 
-
-def run(manifest):
-    with open(f'manifests/{manifest}.mft') as mft:
-        target, stream = mft.readlines()[0].split(',')
-
-        handle = subprocess.run(
-            f'../fab -f fabfiles/{manifest}.fab {target}'.split(),
-            capture_output=True)
-
-        if stream.rstrip() == 'stdout':
-            return handle.stdout.decode()
-        else:
-            assert stream == 'stderr'
-            return handle.stderr.decode()
+COL = 78
 
 
-def check(manifest):
-    actual = run(manifest)
-    with open(f'output/{manifest}') as out:
-        expected = ''.join(out.readlines())
+def report(name, status):
+    dots = '.' * (COL - len(name) - len(status))
+    print(f'{name}{dots}{status}')
 
-    if actual != expected:
-        print('error expected:')
-        print(expected)
-        print('got:')
-        print(actual)
+
+class Manifest:
+    def __init__(self, mft_name):
+        with open(f'manifests/{mft_name}.mft') as mft:
+            self.name = mft_name
+            self.target, self.stream = mft.readlines()[0].rstrip().split(',')
+
+        with open(f'output/{mft_name}.{self.stream}') as exp:
+            self.expected = ''.join(exp.readlines()).rstrip()
+
+    def is_stderr(self):
+        return 'stderr' == self.stream
+
+    def is_stdout(self):
+        assert not self.is_stderr()
+        return 'stdout' == self.stream
+
+
+def run(mft):
+    handle = subprocess.run(
+        f'../fab -f fabfiles/{mft.name}.fab {mft.target}'.split(),
+        capture_output=True)
+
+    if mft.is_stdout():
+        return handle.stdout.decode().rstrip()
+    else:
+        assert mft.is_stderr()
+        return handle.stderr.decode().rstrip()
+
+
+def check(name):
+    mft = Manifest(name)
+    actual = run(mft)
+
+    if actual != mft.expected:
+        report(name, 'fail')
+    else:
+        report(name, 'ok')
 
 
 if __name__ == '__main__':
-    check('BasicDep')
+    check('chain_dependency')
+    check('macros')

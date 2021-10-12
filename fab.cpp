@@ -1,3 +1,4 @@
+#include <array>
 #include <cassert>
 #include <cctype>
 #include <cstdlib>
@@ -33,6 +34,15 @@ operator<<(std::ostream &os, const TokenType &t) {
   }
 }
 
+std::ostream &
+operator<<(std::ostream &os, const Option<TokenType> &t) {
+  if (t) {
+    return os << t.value();
+  } else {
+    return os << "<NONE>";
+  }
+}
+
 template <typename Container, typename T, typename GenExn>
 const auto &
 find_or_throw(const Container &haystack, const T &needle, GenExn &&gen) {
@@ -42,15 +52,6 @@ find_or_throw(const Container &haystack, const T &needle, GenExn &&gen) {
     throw gen();
   } else {
     return *it;
-  }
-}
-
-std::ostream &
-operator<<(std::ostream &os, const Option<TokenType> &t) {
-  if (t) {
-    return os << t;
-  } else {
-    return os << "<NONE>";
   }
 }
 
@@ -107,7 +108,11 @@ struct FabError final : std::runtime_error {
 
   using UnexpectedCharacter = Unexpected<char>;
   using UnexpectedTokenType = Unexpected<TokenType>;
-  using UnexpectedMaybeNullToken = Unexpected<Option<TokenType>>;
+
+  struct TokenNotInExpectedSet {
+    std::vector<Option<TokenType>> expected;
+    Option<TokenType> actual;
+  };
 
   struct UndefinedVariable {
     std::string_view var;
@@ -125,6 +130,25 @@ struct FabError final : std::runtime_error {
       return ss.str();
     }
 
+    std::string operator()(const TokenNotInExpectedSet &u) {
+      std::stringstream ss;
+      ss << "expected one of: {";
+
+      // SO to the rescue: https://stackoverflow.com/a/27585064
+      bool first = true;
+      for (auto tt : u.expected) {
+        if (!first) {
+          ss << ", ";
+        }
+
+        ss << tt;
+        first = false;
+      }
+
+      ss << "}; got: " << u.actual;
+      return ss.str();
+    }
+
     std::string operator()(const UndefinedVariable &uv) {
       return "undefined variable: " + std::string(uv.var.begin(), uv.var.end());
     }
@@ -137,7 +161,7 @@ struct FabError final : std::runtime_error {
 
   using ErrTy =
       std::variant<UnexpectedCharacter, UnexpectedTokenType, UndefinedVariable,
-                   UnexpectedMaybeNullToken, UnknownTarget>;
+                   TokenNotInExpectedSet, UnknownTarget>;
 
   FabError(const ErrTy &ty)
       : std::runtime_error(std::visit(GetErrMsg{}, ty)) {
@@ -253,8 +277,9 @@ class ParseState {
     } else if (TokenType::Macro == peeked) {
       return NeedsResolution{eat(TokenType::Macro).lexeme.value()};
     } else {
-      throw FabError(FabError::UnexpectedMaybeNullToken{
-          .expected = {TokenType::Iden}, .actual = peeked});
+      throw FabError(FabError::TokenNotInExpectedSet{
+          .expected = {{TokenType::Iden}, {TokenType::Macro}},
+          .actual = peeked});
     }
   }
 
@@ -295,7 +320,9 @@ class ParseState {
 
   std::string_view assignment() {
     eat(TokenType::Eq);
-    return eat(TokenType::Iden).lexeme.value();
+    auto lexeme = eat(TokenType::Iden).lexeme.value();
+    eat(TokenType::SemiColon);
+    return lexeme;
   }
 
 public:
@@ -311,11 +338,13 @@ public:
       auto lhs = std::get<Terminal>(iden).iden;
       auto rhs = assignment();
       macros.emplace(lhs, rhs);
-    } else {
-      assert(TokenType::Arrow == peeked);
+    } else if (peeked == TokenType::Arrow) {
       auto [dependency, action] = rule();
       rules.insert(
           {.target = iden, .dependency = dependency, .action = action});
+    } else {
+      throw FabError(FabError::TokenNotInExpectedSet{
+          .expected = {{TokenType::Eq}, {TokenType::Arrow}}, .actual = peeked});
     }
   }
 
