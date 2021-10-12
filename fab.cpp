@@ -1,12 +1,14 @@
 #include <array>
 #include <cassert>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <map>
 #include <ranges>
 #include <sstream>
+#include <stdexcept>
 #include <variant>
 #include <vector>
 
