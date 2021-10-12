@@ -42,12 +42,13 @@ def check(name):
     mft = Manifest(name)
     actual = run(mft)
 
-    if actual != mft.expected:
-        report(name, 'fail')
-    else:
+    if actual == mft.expected:
         report(name, 'ok')
+    else:
+        report(name, 'fail')
 
 
 if __name__ == '__main__':
     check('chain_dependency')
     check('macros')
+    check('macro_reference_macro')

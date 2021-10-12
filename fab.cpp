@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cctype>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <ranges>
@@ -119,6 +120,10 @@ struct FabError final : std::runtime_error {
     std::string_view target;
   };
 
+  struct ExpectedLValue {
+    std::string_view macro;
+  };
+
   struct GetErrMsg {
     template <typename T>
     std::string operator()(const Unexpected<T, T> &u) {
@@ -152,14 +157,19 @@ struct FabError final : std::runtime_error {
     }
 
     std::string operator()(const UnknownTarget &ut) {
-      return "No rule to make target `" +
+      return "no rule to make target `" +
              std::string(ut.target.begin(), ut.target.end()) + "'";
+    }
+
+    std::string operator()(const ExpectedLValue &e) {
+      return "expected lvalue but got macro at: " +
+             std::string(e.macro.begin(), e.macro.end());
     }
   };
 
   using ErrTy =
       std::variant<UnexpectedCharacter, UnexpectedTokenType, UndefinedVariable,
-                   TokenNotInExpectedSet, UnknownTarget>;
+                   TokenNotInExpectedSet, UnknownTarget, ExpectedLValue>;
 
   FabError(const ErrTy &ty)
       : std::runtime_error(std::visit(GetErrMsg{}, ty)) {
@@ -236,7 +246,7 @@ class ParseState {
   std::vector<Token> m_tokens;
   std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
   std::set<RuleIr> rules;
-  std::map<std::string_view, std::string_view> macros;
+  std::map<std::string_view, ResolutionStatus> macros;
 
   const Token &eat(TokenType expected) {
     const auto &actual = *m_offset;
@@ -316,11 +326,11 @@ class ParseState {
     return {};
   }
 
-  std::string_view assignment() {
+  ResolutionStatus assignment() {
     eat(TokenType::Eq);
-    auto lexeme = eat(TokenType::Iden).lexeme.value();
+    auto iden = iden_status();
     eat(TokenType::SemiColon);
-    return lexeme;
+    return iden;
   }
 
 public:
@@ -333,9 +343,14 @@ public:
     auto peeked = peek();
 
     if (peeked == TokenType::Eq) {
-      auto lhs = std::get<Terminal>(iden).iden;
-      auto rhs = assignment();
-      macros.emplace(lhs, rhs);
+      if (std::holds_alternative<Terminal>(iden)) {
+        auto lhs = std::get<Terminal>(iden).iden;
+        auto rhs = assignment();
+        macros.emplace(lhs, rhs);
+      } else {
+        throw FabError(FabError::ExpectedLValue{
+            .macro = std::get<NeedsResolution>(iden).iden});
+      }
     } else if (peeked == TokenType::Arrow) {
       auto [dependency, action] = rule();
       rules.insert(
@@ -351,7 +366,7 @@ public:
     return m_offset->token_type == TokenType::Eof;
   }
 
-  std::tuple<std::set<RuleIr>, std::map<std::string_view, std::string_view>>
+  std::tuple<std::set<RuleIr>, std::map<std::string_view, ResolutionStatus>>
   destructure() {
     auto rules = std::exchange(this->rules, {});
     auto macros = std::exchange(this->macros, {});
@@ -361,7 +376,7 @@ public:
 };
 
 struct Resolver {
-  const std::map<std::string_view, std::string_view> macros;
+  const std::map<std::string_view, std::string_view> &macros;
 
   std::string_view operator()(const Terminal &term) const {
     return term.iden;
@@ -378,22 +393,54 @@ struct Resolver {
 
 Environment
 resolve(ParseState state) {
-  auto env = Environment{};
-  auto [rules, macros] = state.destructure();
-  const auto visitor = Resolver{std::move(macros)};
-  auto visitc = [&visitor](auto arg) { return std::visit(visitor, arg); };
+  const auto [rules, unresolved_macros] = state.destructure();
+  auto macros = std::map<std::string_view, std::string_view>{};
+  auto is_terminal = [](std::pair<std::string_view, ResolutionStatus> pair) {
+    return std::holds_alternative<Terminal>(pair.second);
+  };
 
+  for (const auto &association :
+       unresolved_macros | std::views::filter(is_terminal) |
+           std::views::transform([](auto pair) {
+             return std::pair{pair.first, std::get<Terminal>(pair.second).iden};
+           })) {
+    macros.insert(association);
+  }
+
+  auto second_pass = std::map<std::string_view, std::string_view>{};
+  auto first_pass_visitor = Resolver{macros};
+  for (const auto &association :
+       unresolved_macros | std::views::filter(std::not_fn(is_terminal)) |
+           std::views::transform([&first_pass_visitor](auto pair) {
+             return std::pair{pair.first,
+                              std::visit(first_pass_visitor, pair.second)};
+           })) {
+    second_pass.insert(association);
+  }
+
+  macros.merge(second_pass);
+
+  auto final_pass_visitor = Resolver{macros};
+  auto visitc = [&final_pass_visitor](auto arg) {
+    return std::visit(final_pass_visitor, arg);
+  };
+
+  auto env = Environment{};
   for (const auto &rule : rules) {
     auto target = visitc(rule.target);
     auto dependency = visitc(rule.dependency);
 
     std::string action;
+    bool first = true;
     for (auto iden : rule.action | std::views::transform(visitc)) {
-      action += iden;
-      action.push_back(' ');
-    }
+      // SO to the rescue: https://stackoverflow.com/a/27585064
+      if (!first) {
+        action.push_back(' ');
+      }
 
-    action.pop_back();
+      action += iden;
+      first = false;
+    }
 
     env.insert({.target = target, .dependency = dependency, .action = action});
   }
