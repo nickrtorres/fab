@@ -44,16 +44,16 @@ operator<<(std::ostream &os, const Option<TokenType> &t) {
   }
 }
 
-template <typename Container, typename T, typename GenExn>
+template <typename Container, typename T, typename MkExn>
 const auto &
-find_or_throw(const Container &haystack, const T &needle, GenExn &&gen) {
+find_or_throw(const Container &haystack, const T &needle, MkExn &&mk) {
   auto it = haystack.find(needle);
 
   if (it == std::end(haystack)) {
-    throw gen();
-  } else {
-    return *it;
+    throw mk();
   }
+
+  return *it;
 }
 
 namespace detail {
@@ -90,9 +90,9 @@ using ResolutionStatus = std::variant<NeedsResolution, Terminal>;
 // Intermediate representation for Rules -- after parsing they'll need to be
 // resolved by looking each `NeedsResolution` variant up in the environment.
 struct RuleIr {
-  ResolutionStatus target;
-  ResolutionStatus dependency;
-  std::vector<ResolutionStatus> action;
+  ResolutionStatus target = {};
+  ResolutionStatus dependency = {};
+  std::vector<ResolutionStatus> action = {};
 };
 
 bool
@@ -127,14 +127,14 @@ struct FabError final : std::runtime_error {
   struct GetErrMsg {
     template <typename T>
     std::string operator()(const Unexpected<T, T> &u) {
-      std::stringstream ss;
+      auto ss = std::stringstream{};
       ss << "expected: " << u.expected << "; got: " << u.actual;
       return ss.str();
     }
 
     template <typename T>
     std::string operator()(const Unexpected<std::vector<T>, T> &u) {
-      std::stringstream ss;
+      auto ss = std::stringstream{};
       ss << "expected one of: {";
 
       // SO to the rescue: https://stackoverflow.com/a/27585064
@@ -211,9 +211,9 @@ public:
   Option<char> peek() const {
     if (eof()) {
       return {};
-    } else {
-      return m_buf[m_offset];
     }
+
+    return m_buf[m_offset];
   }
 
   std::string_view extract_lexeme(std::size_t begin, std::size_t end) {
@@ -243,10 +243,10 @@ public:
 };
 
 class ParseState {
-  std::vector<Token> m_tokens;
+  std::vector<Token> m_tokens = {};
   std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
-  std::set<RuleIr> rules;
-  std::map<std::string_view, ResolutionStatus> macros;
+  std::set<RuleIr> rules = {};
+  std::map<std::string_view, ResolutionStatus> macros = {};
 
   const Token &eat(TokenType expected) {
     const auto &actual = *m_offset;

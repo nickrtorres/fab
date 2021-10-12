@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -6,12 +7,11 @@
 #include <set>
 #include <sstream>
 #include <stack>
-#include <stdlib.h>
 #include <string>
 #include <string_view>
-#include <tuple>
-#include <unistd.h>
 #include <utility>
+
+#include <unistd.h>
 
 #include "fab.h"
 
@@ -80,15 +80,15 @@ main(int argc, char **argv) {
   }
 
   const std::string target = argv[optind];
-  std::ifstream handle(fabfile);
+  auto handle = std::ifstream{fabfile};
 
   if (!handle.is_open()) {
     return errout("could not open Fabfile.");
   }
 
-  std::stringstream buf;
+  auto buf = std::stringstream{};
   buf << handle.rdbuf();
-  std::string program = std::move(buf.str());
+  auto program = std::string{std::move(buf.str())};
 
   try {
     auto env = parse(lex(program));

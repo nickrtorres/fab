@@ -1,0 +1,10 @@
+Checks:          'bugprone*,
+                  clang-analyzer*,
+                  cppcoreguidelines*,
+                  cppcoreguidelines*,
+                  modernize*,
+                  -modernize-use-trailing-return-type,
+                  performance*,
+                  readability*,
+                  -readability-convert-member-functions-to-static'
+WarningsAsErrors: '*'
