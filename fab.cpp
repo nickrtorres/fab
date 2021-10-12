@@ -87,6 +87,8 @@ operator<(const Terminal &lhs, const Terminal &rhs) {
 
 using ResolutionStatus = std::variant<NeedsResolution, Terminal>;
 
+using Association = std::tuple<std::string_view, ResolutionStatus>;
+
 // Intermediate representation for Rules -- after parsing they'll need to be
 // resolved by looking each `NeedsResolution` variant up in the environment.
 struct RuleIr {
@@ -246,7 +248,7 @@ class ParseState {
   std::vector<Token> m_tokens = {};
   std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
   std::set<RuleIr> rules = {};
-  std::map<std::string_view, ResolutionStatus> macros = {};
+  std::vector<Association> macros = {};
 
   const Token &eat(TokenType expected) {
     const auto &actual = *m_offset;
@@ -346,7 +348,7 @@ public:
       if (std::holds_alternative<Terminal>(iden)) {
         auto lhs = std::get<Terminal>(iden).iden;
         auto rhs = assignment();
-        macros.emplace(lhs, rhs);
+        macros.emplace_back(lhs, rhs);
       } else {
         throw FabError(FabError::ExpectedLValue{
             .macro = std::get<NeedsResolution>(iden).iden});
@@ -366,8 +368,7 @@ public:
     return m_offset->token_type == TokenType::Eof;
   }
 
-  std::tuple<std::set<RuleIr>, std::map<std::string_view, ResolutionStatus>>
-  destructure() {
+  std::tuple<std::set<RuleIr>, std::vector<Association>> destructure() {
     auto rules = std::exchange(this->rules, {});
     auto macros = std::exchange(this->macros, {});
 
@@ -395,27 +396,28 @@ Environment
 resolve(ParseState state) {
   const auto [rules, unresolved_macros] = state.destructure();
   auto macros = std::map<std::string_view, std::string_view>{};
-  auto is_terminal = [](std::pair<std::string_view, ResolutionStatus> pair) {
-    return std::holds_alternative<Terminal>(pair.second);
+  auto is_terminal = [](Association association) {
+    return std::holds_alternative<Terminal>(std::get<1>(association));
   };
 
-  for (const auto &association :
-       unresolved_macros | std::views::filter(is_terminal) |
-           std::views::transform([](auto pair) {
-             return std::pair{pair.first, std::get<Terminal>(pair.second).iden};
-           })) {
-    macros.insert(association);
+  for (auto [k, v] : unresolved_macros | std::views::filter(is_terminal) |
+                         std::views::transform([](auto association) {
+                           auto [k, v] = association;
+                           return std::tuple{k, std::get<Terminal>(v).iden};
+                         })) {
+    macros.emplace(k, v);
   }
 
   auto second_pass = std::map<std::string_view, std::string_view>{};
   auto first_pass_visitor = Resolver{macros};
-  for (const auto &association :
+  for (auto [k, v] :
        unresolved_macros | std::views::filter(std::not_fn(is_terminal)) |
-           std::views::transform([&first_pass_visitor](auto pair) {
-             return std::pair{pair.first,
-                              std::visit(first_pass_visitor, pair.second)};
+           std::views::transform([&first_pass_visitor](auto association) {
+             auto [k, v] = association;
+             return std::tuple{k, std::visit(first_pass_visitor, v)};
            })) {
-    second_pass.insert(association);
+
+    second_pass.emplace(k, v);
   }
 
   macros.merge(second_pass);
@@ -444,7 +446,6 @@ resolve(ParseState state) {
 
     env.insert({.target = target, .dependency = dependency, .action = action});
   }
-
   return env;
 }
 } // namespace detail
