@@ -4,10 +4,55 @@
 #include <iostream>
 #include <map>
 #include <ranges>
+#include <sstream>
 #include <variant>
 #include <vector>
 
 #include "fab.h"
+
+std::ostream &
+operator<<(std::ostream &os, const TokenType &t) {
+  switch (t) {
+  case TokenType::Arrow:
+    return os << "ARROW";
+  case TokenType::SemiColon:
+    return os << "SEMICOLON";
+  case TokenType::LBrace:
+    return os << "LBRACE";
+  case TokenType::RBrace:
+    return os << "RBRACE";
+  case TokenType::Iden:
+    return os << "IDEN";
+  case TokenType::Eof:
+    return os << "EOF";
+  case TokenType::Eq:
+    return os << "EQ";
+  default:
+    std::cerr << "FATAL: unhandled TokenType" << std::endl;
+    std::abort();
+  }
+}
+
+template <typename Container, typename T, typename GenExn>
+const auto &
+find_or_throw(const Container &haystack, const T &needle, GenExn &&gen) {
+  auto it = haystack.find(needle);
+
+  if (it == std::end(haystack)) {
+    throw gen();
+  } else {
+    return *it;
+  }
+}
+
+std::ostream &
+operator<<(std::ostream &os, const Option<TokenType> &t) {
+  if (t) {
+    return os << t;
+  } else {
+    return os << "<NONE>";
+  }
+}
 
 namespace detail {
 struct NeedsResolution {
@@ -53,16 +98,49 @@ operator<(const RuleIr &lhs, const RuleIr &rhs) {
   return lhs.target < rhs.target;
 }
 
-struct LexError final : public std::runtime_error {
-  const char *msg;
+struct FabError final : std::runtime_error {
+  template <typename T>
+  struct Unexpected {
+    T expected;
+    T actual;
+  };
 
-  LexError(const char *m)
-      : std::runtime_error(m)
-      , msg(m) {
-  }
+  using UnexpectedCharacter = Unexpected<char>;
+  using UnexpectedTokenType = Unexpected<TokenType>;
+  using UnexpectedMaybeNullToken = Unexpected<Option<TokenType>>;
 
-  const char *what() noexcept {
-    return msg;
+  struct UndefinedVariable {
+    std::string_view var;
+  };
+
+  struct UnknownTarget {
+    std::string_view target;
+  };
+
+  struct GetErrMsg {
+    template <typename T>
+    std::string operator()(const Unexpected<T> &u) {
+      std::stringstream ss;
+      ss << "expected: " << u.expected << "; got: " << u.actual;
+      return ss.str();
+    }
+
+    std::string operator()(const UndefinedVariable &uv) {
+      return "undefined variable: " + std::string(uv.var.begin(), uv.var.end());
+    }
+
+    std::string operator()(const UnknownTarget &ut) {
+      return "No rule to make target `" +
+             std::string(ut.target.begin(), ut.target.end()) + "'";
+    }
+  };
+
+  using ErrTy =
+      std::variant<UnexpectedCharacter, UnexpectedTokenType, UndefinedVariable,
+                   UnexpectedMaybeNullToken, UnknownTarget>;
+
+  FabError(const ErrTy &ty)
+      : std::runtime_error(std::visit(GetErrMsg{}, ty)) {
   }
 };
 
@@ -91,7 +169,8 @@ public:
 
   void eat(char expected) {
     if (expected != m_buf[m_offset]) {
-      throw LexError("bad token");
+      throw FabError(FabError::UnexpectedCharacter{.expected = expected,
+                                                   .actual = m_buf[m_offset]});
     }
 
     assert(next().has_value());
@@ -137,27 +216,25 @@ class ParseState {
   std::set<RuleIr> rules;
   std::map<std::string_view, std::string_view> macros;
 
-  const Token &eat(TokenType tt) {
-    const auto &token = *m_offset;
+  const Token &eat(TokenType expected) {
+    const auto &actual = *m_offset;
 
-    if (tt != token.token_type) {
-      throw std::runtime_error("FIXME");
+    if (expected != actual.token_type) {
+      throw FabError(FabError::UnexpectedTokenType{
+          .expected = expected, .actual = actual.token_type});
     }
 
     m_offset = std::next(m_offset);
-    return token;
+    return actual;
   }
 
-  void rule() {
-    ResolutionStatus target = this->target();
+  std::tuple<ResolutionStatus, std::vector<ResolutionStatus>> rule() {
     eat(TokenType::Arrow);
     ResolutionStatus dependency = this->dependency();
     eat(TokenType::LBrace);
     std::vector<ResolutionStatus> action = this->action();
     eat(TokenType::RBrace);
-
-    rules.insert(
-        {.target = target, .dependency = dependency, .action = action});
+    return std::tie(dependency, action);
   }
 
   std::optional<TokenType> peek() const {
@@ -176,7 +253,8 @@ class ParseState {
     } else if (TokenType::Macro == peeked) {
       return NeedsResolution{eat(TokenType::Macro).lexeme.value()};
     } else {
-      throw std::runtime_error("Unexpected token");
+      throw FabError(FabError::UnexpectedMaybeNullToken{
+          .expected = {TokenType::Iden}, .actual = peeked});
     }
   }
 
@@ -215,13 +293,30 @@ class ParseState {
     return {};
   }
 
+  std::string_view assignment() {
+    eat(TokenType::Eq);
+    return eat(TokenType::Iden).lexeme.value();
+  }
+
 public:
   ParseState(std::vector<Token> &&tokens)
       : m_tokens(tokens) {
   }
 
   void stmt_list() {
-    rule();
+    auto iden = iden_status();
+    auto peeked = peek();
+
+    if (peeked == TokenType::Eq) {
+      auto lhs = std::get<Terminal>(iden).iden;
+      auto rhs = assignment();
+      macros.emplace(lhs, rhs);
+    } else {
+      assert(TokenType::Arrow == peeked);
+      auto [dependency, action] = rule();
+      rules.insert(
+          {.target = iden, .dependency = dependency, .action = action});
+    }
   }
 
   bool eof() const {
@@ -246,8 +341,11 @@ struct Resolver {
   }
 
   std::string_view operator()(const NeedsResolution &res) const {
-    // TODO stub
-    return res.iden;
+    auto pair = find_or_throw(macros, res.iden, [&res] {
+      return FabError(FabError::UndefinedVariable{.var = res.iden});
+    });
+
+    return pair.second;
   }
 };
 
@@ -360,14 +458,8 @@ Environment::is_terminal(std::string_view rule) const {
 }
 
 const Rule &
-Environment::get(std::string_view name) const {
-  auto it = rules.find(name);
-
-  if (it == rules.cend()) {
-    auto n = std::string(name.begin(), name.end());
-    const std::string m = "No such rule => " + n + "!";
-    throw std::runtime_error(m);
-  } else {
-    return *it;
-  }
+Environment::get(std::string_view target) const {
+  return find_or_throw(rules, target, [&target] {
+    return detail::FabError(detail::FabError::UnknownTarget{.target = target});
+  });
 }

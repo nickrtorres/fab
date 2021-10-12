@@ -3,30 +3,6 @@
 #include <iostream>
 
 std::ostream &
-operator<<(std::ostream &os, const Token &t) {
-  if (t.lexeme.has_value()) {
-    return os << t.lexeme.value();
-  }
-
-  switch (t.token_type) {
-  case TokenType::Arrow:
-    return os << "ARROW";
-  case TokenType::SemiColon:
-    return os << "SEMICOLON";
-  case TokenType::LBrace:
-    return os << "LBRACE";
-  case TokenType::RBrace:
-    return os << "RBRACE";
-  case TokenType::Iden:
-    return os << "IDEN";
-  case TokenType::Eof:
-    return os << "EOF";
-  default:
-    std::abort();
-  }
-}
-
-std::ostream &
 operator<<(std::ostream &os, const Rule &r) {
   return os << "{ .target = " << r.target << ", .action = " << r.action
             << ", .dependency = " << r.dependency << "}" << std::endl;
@@ -85,6 +61,10 @@ TEST(Lexer, ItRecognizesMacros) {
   ASSERT_EQ(expected, actual);
 }
 
+TEST(Lexer, ItExpectsValidTokens) {
+  ASSERT_THROW(lex("<="), std::runtime_error);
+}
+
 TEST(Parser, ItParsesARule) {
   auto tokens = lex("main <- main.cpp { c++ -o main main.cpp; }");
   auto actual = parse(std::move(tokens));
@@ -94,6 +74,16 @@ TEST(Parser, ItParsesARule) {
                                 .action = "c++ -o main main.cpp"}}};
 
   ASSERT_EQ(expected, actual);
+}
+
+TEST(Parser, ItExpectsSemicolons) {
+  auto tokens = lex("main <- main.cpp { c++ -o main main.cpp }");
+  ASSERT_THROW(parse(std::move(tokens)), std::runtime_error);
+}
+
+TEST(Parser, ItOnlyKnowsDefinedVariables) {
+  auto tokens = lex("main <- main.cpp { $(cmd); }");
+  ASSERT_THROW(parse(std::move(tokens)), std::runtime_error);
 }
 
 int

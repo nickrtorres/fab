@@ -53,8 +53,8 @@ eval_rule(const Environment &env, const Rule &rule) {
 
 int
 main(int argc, char **argv) {
-  auto fail = [program = std::as_const(argv[0])](std::string_view msg) -> int {
-    std::cerr << program << ": " << msg << std::endl;
+  auto errout = [program = std::as_const(argv[0])](auto msg) -> int {
+    std::cerr << program << ": error: " << msg << std::endl;
     return 1;
   };
 
@@ -67,29 +67,33 @@ main(int argc, char **argv) {
       break;
     case '?':
     default:
-      return fail("usuage: fab [-f <Fabfile>] target");
+      return errout("usuage: fab [-f <Fabfile>] target");
     }
   }
 
   if (!std::filesystem::exists(fabfile)) {
-    return fail("Fabfile not found.");
+    return errout("Fabfile not found.");
   }
 
   if (optind >= argc) {
-    return fail("specify target to build");
+    return errout("specify target to build");
   }
 
   const std::string target = argv[optind];
   std::ifstream handle(fabfile);
 
   if (!handle.is_open()) {
-    return fail("could not open Fabfile.");
+    return errout("could not open Fabfile.");
   }
 
   std::stringstream buf;
   buf << handle.rdbuf();
   std::string program = std::move(buf.str());
 
-  auto env = parse(lex(program));
-  eval_rule(env, env.get(target));
+  try {
+    auto env = parse(lex(program));
+    eval_rule(env, env.get(target));
+  } catch (const std::runtime_error &exn) {
+    return errout(exn.what());
+  }
 }
