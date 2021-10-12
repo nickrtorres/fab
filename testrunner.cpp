@@ -1,6 +1,8 @@
-#include "fab.h"
-#include <gtest/gtest.h>
 #include <iostream>
+
+#include <gtest/gtest.h>
+
+#include "fab.h"
 
 std::ostream &
 operator<<(std::ostream &os, const Rule &r) {
