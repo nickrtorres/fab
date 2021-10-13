@@ -1,9 +1,11 @@
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
+#include <ranges>
 #include <set>
 #include <sstream>
 #include <stack>
@@ -39,13 +41,20 @@ eval_rule(const Environment &env, const Rule &rule) {
   while (!stack.empty()) {
     auto top = stack.top();
 
-    if (visited.contains(top.get().dependency) ||
-        env.is_terminal(top.get().dependency)) {
+    const auto &deps = top.get().dependencies;
+    if (std::ranges::all_of(
+            deps, [&visited](auto d) { return visited.contains(d); }) ||
+        std::ranges::all_of(deps,
+                            [&env](auto d) { return env.is_terminal(d); })) {
       detail::eval(top);
       visited.insert(top.get().target);
       stack.pop();
     } else {
-      stack.push(env.get(top.get().dependency));
+      for (auto d : deps | std::views::filter([&env](auto d) {
+                      return !env.is_terminal(d);
+                    })) {
+        stack.push(env.get(d));
+      }
     }
   }
 }

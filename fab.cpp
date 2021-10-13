@@ -97,7 +97,7 @@ using Association = std::tuple<std::string_view, ValueType>;
 // resolved by looking each `ValueType` variant up in the environment.
 struct RuleIr {
   ValueType target = {};
-  ValueType dependency = {};
+  std::vector<ValueType> dependencies = {};
   std::vector<ValueType> action = {};
 };
 
@@ -129,6 +129,8 @@ struct FabError final : std::runtime_error {
   struct ExpectedLValue {
     std::string_view macro;
   };
+
+  struct UnexpectedEof {};
 
   struct GetErrMsg {
     template <typename T>
@@ -171,11 +173,15 @@ struct FabError final : std::runtime_error {
       return "expected lvalue but got macro at: " +
              std::string(e.macro.begin(), e.macro.end());
     }
+
+    std::string operator()(const UnexpectedEof &) {
+      return "unexpected <EOF>";
+    }
   };
 
-  using ErrTy =
-      std::variant<ExpectedLValue, TokenNotInExpectedSet, UndefinedVariable,
-                   UnexpectedCharacter, UnexpectedTokenType, UnknownTarget>;
+  using ErrTy = std::variant<ExpectedLValue, TokenNotInExpectedSet,
+                             UndefinedVariable, UnexpectedCharacter,
+                             UnexpectedEof, UnexpectedTokenType, UnknownTarget>;
 
   explicit FabError(const ErrTy &ty)
       : std::runtime_error(std::visit(GetErrMsg{}, ty)) {
@@ -265,17 +271,21 @@ class ParseState {
     return actual;
   }
 
-  std::tuple<ValueType, std::vector<ValueType>> rule() {
-    eat(TokenType::Arrow);
-    ValueType dependency = this->dependency();
+  std::tuple<std::vector<ValueType>, std::vector<ValueType>> rule() {
+    if (peek() != TokenType::LBrace) {
+      eat(TokenType::Arrow);
+    }
+
+    std::vector<ValueType> dependencies = this->dependencies();
     eat(TokenType::LBrace);
     std::vector<ValueType> action = this->action();
     eat(TokenType::RBrace);
-    return std::tie(dependency, action);
+    return std::tie(dependencies, action);
   }
 
-  std::optional<TokenType> peek() const {
+  TokenType peek() const {
     if (eof()) {
+      throw FabError(FabError::UnexpectedEof{});
       return {};
     } else {
       return m_offset->token_type;
@@ -300,8 +310,8 @@ class ParseState {
     return iden_status();
   }
 
-  ValueType dependency() {
-    return iden_status();
+  std::vector<ValueType> dependencies() {
+    return iden_list();
   }
 
   bool matches(TokenType) {
@@ -315,20 +325,19 @@ class ParseState {
 
   std::vector<ValueType> action() {
     std::vector<ValueType> action;
-
-    auto peeked = peek();
-    while (peeked.has_value() &&
-           matches(peeked.value(), TokenType::Iden, TokenType::Macro)) {
-      action.push_back(iden_status());
-      peeked = peek();
-    }
-
+    auto actions = iden_list();
     eat(TokenType::SemiColon);
-    return action;
+    return actions;
   }
 
-  std::string iden_list() {
-    return {};
+  std::vector<ValueType> iden_list() {
+    std::vector<ValueType> idens;
+
+    while (matches(peek(), TokenType::Iden, TokenType::Macro)) {
+      idens.push_back(iden_status());
+    }
+
+    return idens;
   }
 
   ValueType assignment() {
@@ -356,13 +365,16 @@ public:
         throw FabError(
             FabError::ExpectedLValue{.macro = std::get<LValue>(iden).iden});
       }
-    } else if (peeked == TokenType::Arrow) {
-      auto [dependency, action] = rule();
+    } else if (matches(peeked, TokenType::Arrow, TokenType::LBrace)) {
+      auto [dependencies, action] = rule();
       rules.insert(
-          {.target = iden, .dependency = dependency, .action = action});
+          {.target = iden, .dependencies = dependencies, .action = action});
     } else {
-      throw FabError(FabError::TokenNotInExpectedSet{
-          .expected = {{TokenType::Eq}, {TokenType::Arrow}}, .actual = peeked});
+      throw FabError(
+          FabError::TokenNotInExpectedSet{.expected = {{TokenType::Eq},
+                                                       {TokenType::Arrow},
+                                                       {TokenType::LBrace}},
+                                          .actual = peeked});
     }
   }
 
@@ -433,7 +445,9 @@ resolve(ParseState state) {
   auto env = Environment{};
   for (const auto &rule : rules) {
     auto target = visitc(rule.target);
-    auto dependency = visitc(rule.dependency);
+    auto dependencies_view = rule.dependencies | std::views::transform(visitc);
+    auto dependencies = std::vector<std::string_view>{dependencies_view.begin(),
+                                                      dependencies_view.end()};
 
     std::string action;
     bool first = true;
@@ -447,7 +461,8 @@ resolve(ParseState state) {
       first = false;
     }
 
-    env.insert({.target = target, .dependency = dependency, .action = action});
+    env.insert(
+        {.target = target, .dependencies = dependencies, .action = action});
   }
   return env;
 }

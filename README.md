@@ -1,9 +1,10 @@
 ## `fab` – `make(1)` with curly braces and semicolons
 
 ### Probably
-- [ ] allow multiple prerequisites in each rule
+- [x] allow multiple prerequisites in each rule
 - [ ] allow multiple identifiers in each macro definition
 - [ ] allow inference rules
+- [x] allow rules without dependencies
 
 ### Maybe
 - [ ] implement the `-j` option

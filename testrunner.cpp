@@ -6,8 +6,24 @@
 
 std::ostream &
 operator<<(std::ostream &os, const Rule &r) {
-  return os << "{ .target = " << r.target << ", .action = " << r.action
-            << ", .dependency = " << r.dependency << "}" << std::endl;
+  os << "{ .target = " << r.target;
+
+  os << ".dependencies = [";
+
+  bool first = true;
+  for (auto d : r.dependencies) {
+    if (!first) {
+      os << ", ";
+    }
+
+    os << d;
+    first = false;
+  }
+
+  os << "]"
+     << ", .action = " << r.action << "}" << std::endl;
+
+  return os;
 }
 
 std::ostream &
@@ -68,11 +84,11 @@ TEST(Lexer, ItExpectsValidTokens) {
 }
 
 TEST(Parser, ItParsesARule) {
-  auto tokens = lex("main <- main.cpp { c++ -o main main.cpp; }");
+  auto tokens = lex("main <- main.cpp lib.cpp { c++ -o main main.cpp; }");
   auto actual = parse(std::move(tokens));
 
   auto expected = Environment{{{.target = "main",
-                                .dependency = "main.cpp",
+                                .dependencies = {"main.cpp", "lib.cpp"},
                                 .action = "c++ -o main main.cpp"}}};
 
   ASSERT_EQ(expected, actual);
@@ -83,7 +99,7 @@ TEST(Parser, ItLooksUpMacros) {
   auto actual = parse(std::move(tokens));
 
   auto expected = Environment{{{.target = "main",
-                                .dependency = "main.c",
+                                .dependencies = {"main.c"},
                                 .action = "cc -o main main.c"}}};
 
   ASSERT_EQ(expected, actual);

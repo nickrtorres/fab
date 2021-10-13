@@ -26,7 +26,7 @@ struct Token {
 
 struct Rule {
   std::string_view target;
-  std::string_view dependency;
+  std::vector<std::string_view> dependencies;
   const std::string action;
 
   friend bool operator==(const Rule &, const Rule &) = default;
@@ -68,7 +68,7 @@ std::vector<Token> lex(std::string_view source);
 // <stmt>       ::= <assignment>
 // <stmt>       ::= <rule>
 // <assignment> ::= <iden> := <iden_list>
-// <rule>       ::= <target> <- <dep> lbrace <action> rbrace
+// <rule>       ::= <target> <- <iden_list> lbrace <action> rbrace
 // <rule>       ::= <target> lbrace <action> rbrace
 // <target>     ::= iden
 // <dep>        ::= iden
