@@ -1,3 +1,6 @@
+#ifndef FAB_H
+#define FAB_H
+
 #include <optional>
 #include <set>
 #include <string_view>
@@ -47,13 +50,28 @@ operator<(const Rule &lhs, const Rule &rhs) {
   return lhs.target < rhs.target;
 }
 
-struct Environment {
-  std::set<Rule, std::less<>> rules;
+class Environment {
+  // During parsing the resolver needs to allocate strings for macro lookup. The
+  // lifetime of these strings is managed by this map. Each rule in the set
+  // below *may* hold a string_view to one of the values in this map.
+  const std::map<std::string_view, std::string> m_macros;
+  std::set<Rule, std::less<>> m_rules = {};
+
+public:
+  Environment(std::map<std::string_view, std::string> macros);
 
   const Rule &get(std::string_view) const;
   bool is_terminal(std::string_view) const;
   void insert(Rule &&rule);
   friend bool operator==(const Environment &, const Environment &) = default;
+
+  inline const auto &macros() const {
+    return m_macros;
+  }
+
+  inline const auto &rules() const {
+    return m_rules;
+  }
 };
 
 std::vector<Token> lex(std::string_view source);
@@ -78,3 +96,5 @@ std::vector<Token> lex(std::string_view source);
 // <iden_list>  ::= iden space <iden_list>
 // <iden_list>  ::= macro space <iden_list>
 Environment parse(std::vector<Token> &&tokens);
+
+#endif // FAB_H

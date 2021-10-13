@@ -28,7 +28,7 @@ operator<<(std::ostream &os, const Rule &r) {
 
 std::ostream &
 operator<<(std::ostream &os, const Environment &env) {
-  for (auto r : env.rules) {
+  for (auto r : env.rules()) {
     os << r;
   }
 
@@ -85,22 +85,23 @@ TEST(Lexer, ItExpectsValidTokens) {
 
 TEST(Parser, ItParsesARule) {
   auto tokens = lex("main <- main.cpp lib.cpp { c++ -o main main.cpp; }");
-  auto actual = parse(std::move(tokens));
+  auto actual = parse(std::move(tokens)).rules();
 
-  auto expected = Environment{{{.target = "main",
-                                .dependencies = {"main.cpp", "lib.cpp"},
-                                .action = "c++ -o main main.cpp"}}};
+  auto expected =
+      std::set<Rule, std::less<>>{{.target = "main",
+                                   .dependencies = {"main.cpp", "lib.cpp"},
+                                   .action = "c++ -o main main.cpp"}};
 
   ASSERT_EQ(expected, actual);
 }
 
 TEST(Parser, ItLooksUpMacros) {
   auto tokens = lex("CC := cc; main <- main.c { $(CC) -o main main.c; }");
-  auto actual = parse(std::move(tokens));
+  auto actual = parse(std::move(tokens)).rules();
 
-  auto expected = Environment{{{.target = "main",
-                                .dependencies = {"main.c"},
-                                .action = "cc -o main main.c"}}};
+  auto expected = std::set<Rule, std::less<>>{{.target = "main",
+                                               .dependencies = {"main.c"},
+                                               .action = "cc -o main main.c"}};
 
   ASSERT_EQ(expected, actual);
 }
