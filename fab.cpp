@@ -198,9 +198,9 @@ public:
       : m_buf(source) {
   }
 
-  Option<char> next() {
+  [[nodiscard]] char next() {
     if (eof()) {
-      return {};
+      throw FabError(FabError::UnexpectedEof{});
     }
 
     char c = *m_offset;
@@ -218,7 +218,7 @@ public:
                                                    .actual = *m_offset});
     }
 
-    assert(next().has_value());
+    assert(next() == expected);
   }
 
   Option<char> peek() const {
@@ -233,7 +233,8 @@ public:
     return std::string_view{begin, end};
   }
 
-  auto eat_until(std::function<bool(char)> pred) {
+  template <typename Pred>
+  auto eat_until(Pred pred) {
     const auto begin = m_offset;
     auto end = m_buf.cend();
 
@@ -492,43 +493,31 @@ lex(std::string_view source) {
   auto tokens = std::vector<Token>{};
 
   while (!state.eof()) {
-    auto current = state.peek();
-    if (!current) {
-      break;
-    }
-
-    switch (current.value()) {
+    switch (state.next()) {
     case '\t':
       [[fallthrough]];
     case '\n':
       [[fallthrough]];
     case ' ':
-      state.next();
       break;
     case ':':
-      state.next();
       state.eat('=');
       tokens.push_back({TokenType::Eq, {}});
       break;
     case ';':
-      state.next();
       tokens.push_back({TokenType::SemiColon, {}});
       break;
     case '{':
-      state.next();
       tokens.push_back({TokenType::LBrace, {}});
       break;
     case '}':
-      state.next();
       tokens.push_back({TokenType::RBrace, {}});
       break;
     case '<':
-      state.next();
       state.eat('-');
       tokens.push_back({TokenType::Arrow, {}});
       break;
     case '$': {
-      state.next();
       state.eat('(');
       auto [begin, end] = state.eat_until([](char c) { return c == ')'; });
       tokens.emplace_back(TokenType::Macro, state.extract_lexeme(begin, end));
@@ -538,7 +527,9 @@ lex(std::string_view source) {
     default: {
       auto [begin, end] = state.eat_until(
           [](char c) { return c == ' ' || c == '\n' || c == ';'; });
-      tokens.emplace_back(TokenType::Iden, state.extract_lexeme(begin, end));
+
+      tokens.emplace_back(TokenType::Iden,
+                          state.extract_lexeme(std::prev(begin), end));
       break;
     }
     }
