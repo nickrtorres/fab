@@ -23,7 +23,9 @@ namespace detail {
 void
 eval(const Rule &rule) {
   std::cerr << rule.action << std::endl;
-  system(rule.action.c_str());
+
+  // FIXME: hack for GHA
+  assert(0 == system(rule.action.c_str()));
 }
 } // namespace detail
 
