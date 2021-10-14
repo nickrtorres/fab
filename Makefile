@@ -2,7 +2,7 @@
 .SUFFIXES: .cpp.o
 
 CXX = /opt/gcc/GCC-11.2.0/bin/c++
-CXXFLAGS = -Wall -Werror -Wpedantic               \
+CXXFLAGS = -O3 -Wall -Werror -Wpedantic           \
            -I/opt/gcc/GCC-11.2.0/include          \
 	   -I/opt/include -L/opt/lib -std=c++20 -g
 
