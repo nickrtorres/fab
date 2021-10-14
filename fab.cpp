@@ -14,6 +14,7 @@
 
 #include "fab.h"
 
+namespace {
 std::ostream &
 operator<<(std::ostream &os, const TokenType &t) {
   switch (t) {
@@ -57,6 +58,25 @@ find_or_throw(const Container &haystack, const T &needle, MkExn &&mk) {
 
   return *it;
 }
+
+template <typename Range, typename Delim>
+std::string
+foldl(Range &&range, const Delim &d) {
+  std::string s = {};
+
+  bool first = true;
+  for (const auto &e : range) {
+    if (!first) {
+      s += d;
+    }
+
+    s += e;
+    first = false;
+  }
+
+  return s;
+}
+} // namespace
 
 namespace detail {
 struct LValue {
@@ -146,16 +166,12 @@ struct FabError final : std::runtime_error {
       auto ss = std::stringstream{};
       ss << "expected one of: {";
 
-      // SO to the rescue: https://stackoverflow.com/a/27585064
-      bool first = true;
-      for (auto tt : u.expected) {
-        if (!first) {
-          ss << ", ";
-        }
-
-        ss << tt;
-        first = false;
-      }
+      ss << foldl(u.expected | std::views::transform([](auto e) {
+                    std::stringstream ss = {};
+                    ss << e;
+                    return ss.str();
+                  }),
+                  ", ");
 
       ss << "}; got: " << u.actual;
       return ss.str();
@@ -408,24 +424,6 @@ struct Resolver {
     return pair.second;
   }
 };
-
-template <typename Range, typename Delim>
-std::string
-foldl(Range &&range, const Delim &d) {
-  std::string s = {};
-
-  bool first = true;
-  for (const auto &e : range) {
-    if (!first) {
-      s += d;
-    }
-
-    s += e;
-    first = false;
-  }
-
-  return s;
-}
 
 Environment
 resolve(ParseState state) {
