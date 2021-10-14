@@ -252,22 +252,14 @@ public:
   template <typename Pred>
   auto eat_until(Pred pred) {
     const auto begin = m_offset;
-    auto end = m_buf.cend();
 
-    bool done = false;
-    while (!done) {
-      auto n = peek();
-      if (!n) {
-        done = true;
-      } else if (pred(n.value())) {
-        end = m_offset;
-        done = true;
-      } else {
-        [[maybe_unused]] auto dontcare = next();
-      }
-    }
+    while (!pred(next()))
+      ;
 
-    return std::tuple{begin, end};
+    assert(m_offset != m_buf.begin());
+    m_offset = std::prev(m_offset);
+
+    return std::tuple{begin, m_offset};
   }
 };
 
@@ -497,6 +489,11 @@ lex(std::string_view source) {
     case '\n':
       [[fallthrough]];
     case ' ':
+      break;
+    case '/':
+      state.eat('/');
+      state.eat_until([](char c) { return '\n' == c; });
+      state.eat('\n');
       break;
     case ':':
       state.eat('=');

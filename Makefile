@@ -18,7 +18,7 @@ tidy:
 	clang-tidy fab.cpp main.cpp -- -I/opt/gcc/GCC-11.2.0/include
 
 integration: testrunner fab
-	cd test && python3 integration.py
+	cd integration && python3 integration.py
 
 unit: testrunner
 	./testrunner

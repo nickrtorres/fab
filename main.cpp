@@ -52,7 +52,7 @@ eval_rule(const Environment &env, const Rule &rule) {
     } else {
       for (auto d : deps | std::views::filter([&env](auto d) {
                       return !env.is_terminal(d);
-                    })) {
+                    }) | std::views::reverse) {
         stack.push(env.get(d));
       }
     }

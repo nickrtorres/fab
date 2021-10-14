@@ -50,5 +50,6 @@ def check(name):
 
 if __name__ == '__main__':
     check('chain_dependency')
-    check('macros')
+    check('dag')
     check('macro_reference_macro')
+    check('macros')
