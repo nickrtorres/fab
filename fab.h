@@ -24,7 +24,7 @@ struct Token {
   const TokenType token_type;
   const Option<std::string_view> lexeme;
 
-  friend bool operator==(const Token &, const Token &) = default;
+  bool operator==(const Token &) const = default;
 };
 
 struct Rule {
@@ -32,7 +32,7 @@ struct Rule {
   std::vector<std::string_view> dependencies;
   const std::string action;
 
-  friend bool operator==(const Rule &, const Rule &) = default;
+  bool operator==(const Rule &) const = default;
 };
 
 inline bool
@@ -63,7 +63,7 @@ public:
   const Rule &get(std::string_view) const;
   bool is_terminal(std::string_view) const;
   void insert(Rule &&rule);
-  friend bool operator==(const Environment &, const Environment &) = default;
+  bool operator==(const Environment &) const = default;
 
   inline const auto &macros() const {
     return m_macros;
