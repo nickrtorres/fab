@@ -4,7 +4,7 @@
 CXX = /opt/gcc/GCC-11.2.0/bin/c++
 CXXFLAGS = -O3 -Wall -Werror -Wpedantic           \
            -I/opt/gcc/GCC-11.2.0/include          \
-	   -I/opt/include -L/opt/lib -std=c++20 -g
+	   -I/opt/include -std=c++20 -g
 
 .cpp.o:
 	$(CXX) $(CXXFLAGS) -c $<
@@ -24,7 +24,7 @@ unit: testrunner
 	./testrunner
 
 testrunner: testrunner.o fab.o
-	$(CXX) $(CXXFLAGS) -o $@ -lgtest testrunner.o fab.o
+	$(CXX) $(CXXFLAGS) -o $@ testrunner.o fab.o -L/opt/lib -lgtest -lpthread
 
 clean:
 	rm -rf main.o fab.o testrunner.o fab testrunner
