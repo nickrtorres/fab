@@ -1,20 +1,20 @@
-// A pretty simple DAG like this ... also comments work now!
-// Numbers in parens represent the order that should be printed.
-//
-//                               +--- dep3 (1)
-//                               |
-//              +--- dep1 (3) ---+
-//              |                |
-//              |                +--- dep4 (2)
-//              |
-// main (7) ----+
-//              |
-//              |                +--- dep5 (4)
-//              |                |
-//              +--- dep2 (6) ---+
-//                               |
-//                               +--- dep6 (5)
-//
+# A pretty simple DAG like this ... also comments work now!
+# Numbers in parens represent the order that should be printed.
+#
+#                               +--- dep3 (1)
+#                               |
+#              +--- dep1 (3) ---+
+#              |                |
+#              |                +--- dep4 (2)
+#              |
+# main (7) ----+
+#              |
+#              |                +--- dep5 (4)
+#              |                |
+#              +--- dep2 (6) ---+
+#                               |
+#                               +--- dep6 (5)
+#
 
 main <- dep1 dep2 {
   echo 7;

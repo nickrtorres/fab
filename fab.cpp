@@ -490,8 +490,7 @@ lex(std::string_view source) {
       [[fallthrough]];
     case ' ':
       break;
-    case '/':
-      state.eat('/');
+    case '#':
       state.eat_until([](char c) { return '\n' == c; });
       state.eat('\n');
       break;
