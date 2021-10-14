@@ -553,7 +553,7 @@ Environment::insert(Rule &&rule) {
 }
 
 bool
-Environment::is_terminal(std::string_view rule) const {
+Environment::is_leaf(std::string_view rule) const {
   return !m_rules.contains(rule);
 }
 

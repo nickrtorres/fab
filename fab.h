@@ -61,7 +61,7 @@ public:
   Environment(std::map<std::string_view, std::string> macros);
 
   const Rule &get(std::string_view) const;
-  bool is_terminal(std::string_view) const;
+  bool is_leaf(std::string_view) const;
   void insert(Rule &&rule);
   bool operator==(const Environment &) const = default;
 
