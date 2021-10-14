@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cassert>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -29,8 +30,15 @@ eval(const Rule &rule) {
 template <typename T>
 using Ref = std::reference_wrapper<T>;
 
-// traverse through dependency tree (depth first) until all a rules descendents
-// are satisfied.
+//   cases
+//   ------------------------------------------
+//   (1) current node is a leaf
+//         - eval node; mark visited; pop
+//   (2) current node has deps
+//         - if all deps are visited
+//             eval node; mark visited; pop
+//         - else
+//             filter unvisited nodes; push
 void
 eval_rule(const Environment &env, const Rule &rule) {
   auto stack = std::stack<Ref<const Rule>>{};
@@ -39,21 +47,32 @@ eval_rule(const Environment &env, const Rule &rule) {
   stack.push(rule);
 
   while (!stack.empty()) {
-    auto top = stack.top();
+    const auto &top = stack.top().get();
+    const auto &deps = top.dependencies;
 
-    const auto &deps = top.get().dependencies;
-    if (std::ranges::all_of(
-            deps, [&visited](auto d) { return visited.contains(d); }) ||
-        std::ranges::all_of(deps,
-                            [&env](auto d) { return env.is_terminal(d); })) {
+    if (visited.contains(top.target)) {
+      stack.pop();
+      continue;
+    }
+
+    if (deps.empty()) {
+      assert(!visited.contains(top.target));
       detail::eval(top);
-      visited.insert(top.get().target);
+      visited.insert(top.target);
       stack.pop();
     } else {
-      for (auto d : deps | std::views::filter([&env](auto d) {
-                      return !env.is_terminal(d);
-                    }) | std::views::reverse) {
-        stack.push(env.get(d));
+      if (std::ranges::all_of(deps,
+                              [&](auto d) { return visited.contains(d); })) {
+        assert(!visited.contains(top.target));
+        detail::eval(top);
+        visited.insert(top.target);
+        stack.pop();
+      } else {
+        for (auto d : deps | std::views::filter([&](auto d) {
+                        return !visited.contains(d);
+                      }) | std::views::reverse) {
+          stack.push(env.get(d));
+        }
       }
     }
   }

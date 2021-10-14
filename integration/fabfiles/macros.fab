@@ -3,3 +3,7 @@ CMD := echo;
 foo <- bar {
   $(CMD) 42;
 }
+
+bar {
+  echo 10;
+}

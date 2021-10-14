@@ -49,6 +49,7 @@ def check(name):
 
 
 if __name__ == '__main__':
+    check('advent')
     check('chain_dependency')
     check('dag')
     check('macro_reference_macro')

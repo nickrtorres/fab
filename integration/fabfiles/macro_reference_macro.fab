@@ -4,3 +4,7 @@ b := $(a);
 foo <- bar {
   echo $(b);
 }
+
+bar {
+  echo 10;
+}

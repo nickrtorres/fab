@@ -1,11 +1,15 @@
 foo <- bar {
-    echo 3;
+  echo 4;
 }
 
 bar <- baz {
-    echo 2;
+  echo 3;
 }
 
 baz <- qux {
-    echo 1;
+  echo 2;
+}
+
+qux {
+  echo 1;
 }
