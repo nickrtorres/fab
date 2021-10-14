@@ -77,6 +77,13 @@ eval(const Rule &rule) {
 template <typename T>
 using Ref = std::reference_wrapper<T>;
 
+template <typename T>
+struct IsConstLValueReference {
+  static const bool value =
+      std::is_lvalue_reference<T>::value &&
+      std::is_const<typename std::remove_reference<T>::type>::value;
+};
+
 //   cases
 //   ------------------------------------------
 //   (1) current node is a leaf
@@ -86,14 +93,6 @@ using Ref = std::reference_wrapper<T>;
 //             eval node; mark visited; pop
 //         - else
 //             filter unvisited nodes; push
-
-template <typename T>
-struct IsConstLValueReference {
-  static const bool value =
-      std::is_lvalue_reference<T>::value &&
-      std::is_const<typename std::remove_reference<T>::type>::value;
-};
-
 void
 eval_rule(const Environment &env, const Rule &rule) {
   auto stack = std::stack<Ref<const Rule>>{};
