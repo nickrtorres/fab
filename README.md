@@ -5,7 +5,7 @@
 - [x] allow rules without dependencies
 - [x] allow multiple identifiers in each macro definition
 - [ ] allow inference rules
-- [ ] support default rule
+- [x] support default rule
 
 ### Maybe
 - [ ] implement the `-j` option

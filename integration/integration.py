@@ -52,5 +52,6 @@ if __name__ == '__main__':
     check('advent')
     check('chain_dependency')
     check('dag')
+    check('default_rule')
     check('macro_reference_macro')
     check('macros')

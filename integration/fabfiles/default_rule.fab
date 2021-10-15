@@ -1,0 +1,13 @@
+all <- main;
+
+main <- dep1 {
+  echo 3; 
+}
+
+dep1 <- dep2 {
+  echo 2;
+}
+
+dep2 {
+  echo 1;
+}
