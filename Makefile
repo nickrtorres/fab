@@ -23,7 +23,7 @@ integration: testrunner fab
 unit: testrunner
 	./testrunner
 
-testrunner: testrunner.o fab.o
+testrunner: testrunner.o fab.o fab.h
 	$(CXX) $(CXXFLAGS) -o $@ testrunner.o fab.o -L/opt/lib -lgtest -lpthread
 
 clean:
