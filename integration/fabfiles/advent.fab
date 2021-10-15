@@ -33,13 +33,10 @@
 # 
 # 
 # def write(entry, db):
-#     print(f'entry point is: {entry}', file=sys.stderr)
+#     print(f'solve <- {entry};')
 # 
-#     first = True
 #     for (k, vs) in db.items():
-#         if not first:
-#             print()
-# 
+#         print()
 #         if not vs:
 #             print(f'{k} {{')
 #         else:
@@ -48,13 +45,11 @@
 #         print(f'  printf "{k}";')
 #         print('}')
 # 
-#         first = False
-# 
 # 
 # if __name__ == '__main__':
 #     write(*parse(sys.stdin.readlines()))
-# 
-# 
+solve <- G;
+
 G <- Z X W S M L D C B {
   printf "G";
 }

@@ -28,11 +28,15 @@ struct Token {
 };
 
 struct Rule {
-  std::string_view target;
-  std::vector<std::string_view> dependencies;
+  const std::string_view target;
+  const std::vector<std::string_view> dependencies;
   const std::string action;
 
   bool operator==(const Rule &) const = default;
+
+  inline bool is_phony() const {
+    return action.empty();
+  }
 };
 
 inline bool
@@ -86,6 +90,7 @@ std::vector<Token> lex(std::string_view source);
 // <stmt>       ::= <assignment>
 // <stmt>       ::= <rule>
 // <assignment> ::= <iden> := <iden_list>
+// <rule>       ::= <target> <- <iden_list> semicolon
 // <rule>       ::= <target> <- <iden_list> lbrace <action> rbrace
 // <rule>       ::= <target> lbrace <action> rbrace
 // <target>     ::= iden

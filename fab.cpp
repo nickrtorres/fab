@@ -287,10 +287,16 @@ class ParseState {
     }
 
     std::vector<ValueType> dependencies = this->dependencies();
+
+    if (peek() == TokenType::SemiColon) {
+      eat(TokenType::SemiColon);
+      return std::make_tuple(std::move(dependencies), std::vector<ValueType>{});
+    }
+
     eat(TokenType::LBrace);
     std::vector<ValueType> action = this->action();
     eat(TokenType::RBrace);
-    return std::tie(dependencies, action);
+    return std::tuple{std::move(dependencies), std::move(action)};
   }
 
   TokenType peek() const {

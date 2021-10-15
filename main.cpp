@@ -55,9 +55,14 @@ run_system_cmd(const std::string &cmd) {
 
 void
 eval(const Rule &rule) {
+  if (rule.is_phony()) {
+    return;
+  }
+
   // `target' doesn't exist -- it must be out of date!
   if (!std::filesystem::exists(rule.target)) {
     run_system_cmd(rule.action);
+    return;
   }
 
   // `target' exists without any dependencies -- it must be up to date!
