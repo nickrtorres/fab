@@ -18,6 +18,8 @@ enum class TokenType {
   Macro,
   RBrace,
   SemiColon,
+  TargetAlias,
+  PrereqAlias,
 };
 
 struct Token {
