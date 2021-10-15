@@ -54,28 +54,16 @@ operator<(const Rule &lhs, const Rule &rhs) {
   return lhs.target < rhs.target;
 }
 
-class Environment {
+struct Environment {
   // During parsing the resolver needs to allocate strings for macro lookup. The
   // lifetime of these strings is managed by this map. Each rule in the set
   // below *may* hold a string_view to one of the values in this map.
-  const std::map<std::string_view, std::string> m_macros;
-  std::set<Rule, std::less<>> m_rules = {};
-
-public:
-  Environment(std::map<std::string_view, std::string> macros);
+  const std::map<std::string_view, std::string> macros;
+  const std::set<Rule, std::less<>> rules;
 
   const Rule &get(std::string_view) const;
   bool is_leaf(std::string_view) const;
-  void insert(Rule &&rule);
   bool operator==(const Environment &) const = default;
-
-  inline const auto &macros() const {
-    return m_macros;
-  }
-
-  inline const auto &rules() const {
-    return m_rules;
-  }
 };
 
 std::vector<Token> lex(std::string_view source);

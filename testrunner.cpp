@@ -28,7 +28,7 @@ operator<<(std::ostream &os, const Rule &r) {
 
 std::ostream &
 operator<<(std::ostream &os, const Environment &env) {
-  for (auto r : env.rules()) {
+  for (auto r : env.rules) {
     os << r;
   }
 
@@ -85,7 +85,7 @@ TEST(Lexer, ItExpectsValidTokens) {
 
 TEST(Parser, ItParsesARule) {
   auto tokens = lex("main <- main.cpp lib.cpp { c++ -o main main.cpp; }");
-  auto actual = parse(std::move(tokens)).rules();
+  auto actual = parse(std::move(tokens)).rules;
 
   auto expected =
       std::set<Rule, std::less<>>{{.target = "main",
@@ -97,7 +97,7 @@ TEST(Parser, ItParsesARule) {
 
 TEST(Parser, ItLooksUpMacros) {
   auto tokens = lex("CC := cc; main <- main.c { $(CC) -o main main.c; }");
-  auto actual = parse(std::move(tokens)).rules();
+  auto actual = parse(std::move(tokens)).rules;
 
   auto expected = std::set<Rule, std::less<>>{{.target = "main",
                                                .dependencies = {"main.c"},

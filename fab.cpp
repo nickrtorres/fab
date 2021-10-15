@@ -206,7 +206,7 @@ struct FabError final : std::runtime_error {
 };
 
 class LexState {
-  std::string_view m_buf;
+  const std::string_view m_buf;
   std::string_view::const_iterator m_offset = m_buf.cbegin();
 
 public:
@@ -266,7 +266,7 @@ public:
 class ParseState {
   const std::vector<Token> m_tokens;
   std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
-  std::set<RuleIr> rules = {};
+  std::vector<RuleIr> rules = {};
   std::vector<Association> macros = {};
 
   const Token &eat(TokenType expected) {
@@ -384,7 +384,7 @@ public:
     } else if (ParseState::matches(peeked, TokenType::Arrow,
                                    TokenType::LBrace)) {
       auto [dependencies, action] = rule();
-      rules.insert(
+      rules.push_back(
           {.target = iden, .dependencies = dependencies, .action = action});
     } else {
       throw FabError(
@@ -400,7 +400,7 @@ public:
     return m_offset->token_type == TokenType::Eof;
   }
 
-  std::tuple<std::set<RuleIr>, std::vector<Association>> destructure() {
+  std::tuple<std::vector<RuleIr>, std::vector<Association>> destructure() {
     auto rules = std::exchange(this->rules, {});
     auto macros = std::exchange(this->macros, {});
 
@@ -424,64 +424,91 @@ struct Resolver {
   }
 };
 
-Environment
-resolve(ParseState state) {
-  const auto [rules, unresolved_macros] = state.destructure();
-  auto macros = std::map<std::string_view, std::string>{};
-  auto is_rvalue = [](Association association) {
+namespace resolve {
+namespace detail {
+std::map<std::string_view, std::string>
+resolve_associations(const std::vector<Association> &associations) {
+  const auto base_resolver = [](const auto &association, auto &&transformer) {
     auto [k, vs] = association;
-    return std::ranges::all_of(
-        vs, [](auto v) { return std::holds_alternative<RValue>(v); });
+    return std::make_pair(k,
+                          foldl(vs | std::views::transform(transformer), " "));
   };
 
-  auto into_rvalue = [](auto v) { return std::get<RValue>(v).iden; };
+  const auto is_rvalue = [](const Association &association) {
+    auto [k, vs] = association;
+    return std::ranges::all_of(
+        vs, [](const auto &v) { return std::holds_alternative<RValue>(v); });
+  };
 
-  for (auto [k, v] :
-       unresolved_macros | std::views::filter(is_rvalue) |
-           std::views::transform([&](auto association) {
-             auto [k, vs] = association;
-             return std::tuple{
-                 k, foldl(vs | std::views::transform(into_rvalue), " ")};
-           })) {
-    macros.emplace(k, v);
-  }
+  const auto resolve_as_rvalue = [base_resolver](const auto &association) {
+    const auto into_rvalue = [](const auto &v) {
+      return std::get<RValue>(v).iden;
+    };
 
-  auto second_pass = std::map<std::string_view, std::string>{};
-  const auto first_pass_visitor = Resolver{macros};
-  for (auto [k, v] :
-       unresolved_macros | std::views::filter(std::not_fn(is_rvalue)) |
-           std::views::transform([&](auto association) {
-             auto [k, vs] = association;
-             auto def = foldl(vs | std::views::transform([&](auto e) {
-                                return std::visit(first_pass_visitor, e);
-                              }),
-                              " ");
+    return base_resolver(association, into_rvalue);
+  };
 
-             return std::tuple{k, std::move(def)};
-           })) {
+  auto resolved = std::map<std::string_view, std::string>{};
+  std::ranges::move(
+      std::views::transform(associations | std::views::filter(is_rvalue),
+                            resolve_as_rvalue),
+      std::inserter(resolved, resolved.begin()));
 
-    second_pass.emplace(k, v);
-  }
+  const auto resolve_with_visitor = [&macros = std::as_const(resolved),
+                                     base_resolver](const auto &association) {
+    const auto visitc = [&](const auto &variant) {
+      auto visitor = Resolver{macros};
+      return std::visit(visitor, variant);
+    };
 
-  macros.merge(second_pass);
+    return base_resolver(association, visitc);
+  };
 
-  auto env = Environment{std::move(macros)};
-  const auto final_pass_visitor = Resolver{env.macros()};
-  auto visitc = [&](auto arg) { return std::visit(final_pass_visitor, arg); };
+  std::ranges::move(
+      std::views::transform(
+          std::views::filter(associations, std::not_fn(is_rvalue)),
+          resolve_with_visitor),
+      std::inserter(resolved, resolved.begin()));
 
-  for (const auto &rule : rules) {
-    auto target = visitc(rule.target);
-    auto dependencies_view = rule.dependencies | std::views::transform(visitc);
-    auto dependencies = std::vector<std::string_view>{dependencies_view.begin(),
-                                                      dependencies_view.end()};
-    env.insert(
-        {.target = target,
-         .dependencies = dependencies,
-         .action = foldl(rule.action | std::views::transform(visitc), " ")});
-  }
-
-  return env;
+  return resolved;
 }
+
+std::set<Rule, std::less<>>
+resolve_irs(const std::map<std::string_view, std::string> &macros,
+            const std::vector<RuleIr> &irs) {
+
+  const auto resolve_ir = [macros](const auto &ir) {
+    auto visitc = [&](auto arg) {
+      const auto visitor = Resolver{macros};
+      return std::visit(visitor, arg);
+    };
+
+    auto dependencies = std::vector<std::string_view>{};
+    std::ranges::copy(std::views::transform(ir.dependencies, visitc),
+                      std::back_inserter(dependencies));
+
+    return Rule{.target = visitc(ir.target),
+                .dependencies = std::move(dependencies),
+                .action =
+                    foldl(ir.action | std::views::transform(visitc), " ")};
+  };
+
+  auto resolved = std::set<Rule, std::less<>>{};
+  std::ranges::move(std::views::transform(irs, resolve_ir),
+                    std::inserter(resolved, resolved.begin()));
+
+  return resolved;
+}
+} // namespace detail
+
+Environment
+parse_state(ParseState state) {
+  const auto [irs, associations] = state.destructure();
+  /* const */ auto macros = detail::resolve_associations(associations);
+  /* const */ auto rules = detail::resolve_irs(macros, irs);
+  return Environment{.macros = std::move(macros), .rules = std::move(rules)};
+}
+} // namespace resolve
 } // namespace detail
 
 std::vector<Token>
@@ -547,26 +574,17 @@ parse(std::vector<Token> &&tokens) {
     state.stmt_list();
   }
 
-  return detail::resolve(std::move(state));
-}
-
-Environment::Environment(std::map<std::string_view, std::string> macros)
-    : m_macros(std::move(macros)) {
-}
-
-void
-Environment::insert(Rule &&rule) {
-  m_rules.emplace(std::move(rule));
+  return detail::resolve::parse_state(std::move(state));
 }
 
 bool
 Environment::is_leaf(std::string_view rule) const {
-  return !m_rules.contains(rule);
+  return !rules.contains(rule);
 }
 
 const Rule &
 Environment::get(std::string_view target) const {
-  return find_or_throw(m_rules, target, [&target] {
+  return find_or_throw(rules, target, [&target] {
     return detail::FabError(detail::FabError::UnknownTarget{.target = target});
   });
 }
