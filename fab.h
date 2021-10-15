@@ -60,6 +60,7 @@ struct Environment {
   // below *may* hold a string_view to one of the values in this map.
   const std::map<std::string_view, std::string> macros;
   const std::set<Rule, std::less<>> rules;
+  std::string_view head;
 
   const Rule &get(std::string_view) const;
   bool is_leaf(std::string_view) const;

@@ -473,7 +473,7 @@ resolve_associations(const std::vector<Association> &associations) {
   return resolved;
 }
 
-std::set<Rule, std::less<>>
+std::vector<Rule>
 resolve_irs(const std::map<std::string_view, std::string> &macros,
             const std::vector<RuleIr> &irs) {
 
@@ -493,11 +493,23 @@ resolve_irs(const std::map<std::string_view, std::string> &macros,
                     foldl(ir.action | std::views::transform(visitc), " ")};
   };
 
-  auto resolved = std::set<Rule, std::less<>>{};
+  auto resolved = std::vector<Rule>{};
   std::ranges::move(std::views::transform(irs, resolve_ir),
-                    std::inserter(resolved, resolved.begin()));
+                    std::back_inserter(resolved));
 
   return resolved;
+}
+
+template <typename T>
+concept Moveable = std::is_move_constructible<T>::value;
+
+template <typename T>
+std::set<T, std::less<>>
+into_set(std::vector<T> vs) requires Moveable<T> {
+  return std::set<T, std::less<>>{
+      std::make_move_iterator(vs.begin()),
+      std::make_move_iterator(vs.end()),
+  };
 }
 } // namespace detail
 
@@ -506,7 +518,11 @@ parse_state(ParseState state) {
   const auto [irs, associations] = state.destructure();
   /* const */ auto macros = detail::resolve_associations(associations);
   /* const */ auto rules = detail::resolve_irs(macros, irs);
-  return Environment{.macros = std::move(macros), .rules = std::move(rules)};
+  const std::string_view head = rules.front().target;
+
+  return Environment{.macros = std::move(macros),
+                     .rules = detail::into_set(std::move(rules)),
+                     .head = head};
 }
 } // namespace resolve
 } // namespace detail

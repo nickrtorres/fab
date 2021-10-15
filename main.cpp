@@ -167,11 +167,6 @@ main(int argc, char **argv) {
     return errout("Fabfile not found.");
   }
 
-  if (optind >= argc) {
-    return errout("specify target to build");
-  }
-
-  const std::string target = argv[optind];
   auto handle = std::ifstream{fabfile};
 
   if (!handle.is_open()) {
@@ -184,7 +179,12 @@ main(int argc, char **argv) {
 
   try {
     auto env = parse(lex(program));
-    eval_rule(env, env.get(target));
+
+    if (optind < argc) {
+      env.head = argv[optind];
+    }
+
+    eval_rule(env, env.get(env.head));
   } catch (const std::runtime_error &exn) {
     return errout(exn.what());
   }
