@@ -111,7 +111,7 @@ using Association = std::tuple<std::string_view, std::vector<ValueType>>;
 // resolved by looking each `ValueType` variant up in the environment.
 struct RuleIr {
   const ValueType target;
-  const std::vector<ValueType> dependencies;
+  const std::vector<ValueType> prereqs;
   const std::vector<ValueType> action;
 };
 
@@ -281,17 +281,17 @@ class ParseState {
       eat(TokenType::Arrow);
     }
 
-    std::vector<ValueType> dependencies = this->dependencies();
+    std::vector<ValueType> prereqs = this->prereqs();
 
     if (peek() == TokenType::SemiColon) {
       eat(TokenType::SemiColon);
-      return std::make_tuple(std::move(dependencies), std::vector<ValueType>{});
+      return std::make_tuple(std::move(prereqs), std::vector<ValueType>{});
     }
 
     eat(TokenType::LBrace);
     std::vector<ValueType> action = this->action();
     eat(TokenType::RBrace);
-    return std::tuple{std::move(dependencies), std::move(action)};
+    return std::tuple{std::move(prereqs), std::move(action)};
   }
 
   TokenType peek() const {
@@ -327,7 +327,7 @@ class ParseState {
     return iden_status();
   }
 
-  std::vector<ValueType> dependencies() {
+  std::vector<ValueType> prereqs() {
     return iden_list();
   }
 
@@ -386,9 +386,8 @@ public:
       }
     } else if (ParseState::matches(peeked, TokenType::Arrow,
                                    TokenType::LBrace)) {
-      auto [dependencies, action] = rule();
-      rules.push_back(
-          {.target = iden, .dependencies = dependencies, .action = action});
+      auto [prereqs, action] = rule();
+      rules.push_back({.target = iden, .prereqs = prereqs, .action = action});
     } else {
       throw FabError(
           FabError::TokenNotInExpectedSet{.expected = {{TokenType::Eq},
@@ -441,7 +440,7 @@ struct Resolver {
 
 struct ActionResolver {
   const std::string_view target;
-  const std::vector<std::string_view> dependencies;
+  const std::vector<std::string_view> prereqs;
   const std::map<std::string_view, std::string> &macros;
 
   std::string operator()(const TargetAlias &) const {
@@ -449,7 +448,7 @@ struct ActionResolver {
   }
 
   std::string operator()(const PrereqAlias &) const {
-    return foldl(dependencies, " ");
+    return foldl(prereqs, " ");
   }
 
   template <typename T>
@@ -518,21 +517,20 @@ resolve_irs(const std::map<std::string_view, std::string> &macros,
     };
 
     const auto target = visitc(ir.target);
-    auto dependencies = std::vector<std::string_view>{};
-    std::ranges::copy(std::views::transform(ir.dependencies, visitc),
-                      std::back_inserter(dependencies));
+    auto prereqs = std::vector<std::string_view>{};
+    std::ranges::copy(std::views::transform(ir.prereqs, visitc),
+                      std::back_inserter(prereqs));
 
-    auto action_visitc = [&, &dependencies =
-                                 std::as_const(dependencies)](auto arg) {
+    auto action_visitc = [&, &prereqs = std::as_const(prereqs)](auto arg) {
       const auto visitor = ActionResolver{
-          .target = target, .dependencies = dependencies, .macros = macros};
+          .target = target, .prereqs = prereqs, .macros = macros};
       return std::visit(visitor, arg);
     };
 
     auto action = foldl(std::views::transform(ir.action, action_visitc), " ");
 
     return Rule{.target = target,
-                .dependencies = std::move(dependencies),
+                .prereqs = std::move(prereqs),
                 .action = std::move(action)};
   };
 

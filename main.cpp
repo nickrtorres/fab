@@ -65,12 +65,12 @@ eval(const Rule &rule) {
     return;
   }
 
-  // `target' exists without any dependencies -- it must be up to date!
-  if (rule.dependencies.empty()) {
+  // `target' exists without any prereqs -- it must be up to date!
+  if (rule.prereqs.empty()) {
     return;
   }
 
-  auto times = rule.dependencies | std::views::transform(last_write);
+  auto times = rule.prereqs | std::views::transform(last_write);
   auto max = *std::ranges::max_element(times.begin(), times.end());
 
   if (last_write(rule.target) < max) {
@@ -114,7 +114,7 @@ eval_rule(const Environment &env, const Rule &rule) {
 
   while (!stack.empty()) {
     const auto &top = stack.top().get();
-    const auto &deps = top.dependencies;
+    const auto &deps = top.prereqs;
 
     if (visited.contains(top.target)) {
       stack.pop();

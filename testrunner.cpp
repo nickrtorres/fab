@@ -8,10 +8,10 @@ std::ostream &
 operator<<(std::ostream &os, const Rule &r) {
   os << "{ .target = " << r.target;
 
-  os << ".dependencies = [";
+  os << ".prereqs = [";
 
   bool first = true;
-  for (auto d : r.dependencies) {
+  for (auto d : r.prereqs) {
     if (!first) {
       os << ", ";
     }
@@ -89,7 +89,7 @@ TEST(Parser, ItParsesARule) {
 
   auto expected =
       std::set<Rule, std::less<>>{{.target = "main",
-                                   .dependencies = {"main.cpp", "lib.cpp"},
+                                   .prereqs = {"main.cpp", "lib.cpp"},
                                    .action = "c++ -o main main.cpp"}};
 
   ASSERT_EQ(expected, actual);
@@ -99,9 +99,8 @@ TEST(Parser, ItLooksUpMacros) {
   auto tokens = lex("CC := cc; main <- main.c { $(CC) -o main main.c; }");
   auto actual = parse(std::move(tokens)).rules;
 
-  auto expected = std::set<Rule, std::less<>>{{.target = "main",
-                                               .dependencies = {"main.c"},
-                                               .action = "cc -o main main.c"}};
+  auto expected = std::set<Rule, std::less<>>{
+      {.target = "main", .prereqs = {"main.c"}, .action = "cc -o main main.c"}};
 
   ASSERT_EQ(expected, actual);
 }

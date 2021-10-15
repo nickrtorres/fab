@@ -31,7 +31,7 @@ struct Token {
 
 struct Rule {
   const std::string_view target;
-  const std::vector<std::string_view> dependencies;
+  const std::vector<std::string_view> prereqs;
   const std::string action;
 
   bool operator==(const Rule &) const = default;
