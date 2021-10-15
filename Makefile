@@ -12,12 +12,12 @@ CXXFLAGS = -Wall -Werror -Wpedantic               \
 fab: fab.o main.o
 	$(CXX) $(CXXFLAGS) -o $@ fab.o main.o
 
-check: unit integration
+check: unit accept
 
 tidy:
 	clang-tidy fab.cpp main.cpp -- -I/opt/gcc/GCC-11.2.0/include
 
-integration: testrunner fab
+accept: testrunner fab
 	cd integration && python3 integration.py
 
 unit: testrunner
