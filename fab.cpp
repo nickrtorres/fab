@@ -80,11 +80,11 @@ foldl(Range &&range, const Delim &d) {
 
 namespace detail {
 struct LValue {
-  std::string_view iden;
+  const std::string_view iden;
 };
 
 struct RValue {
-  std::string_view iden;
+  const std::string_view iden;
 };
 
 bool
@@ -117,9 +117,9 @@ using Association = std::tuple<std::string_view, std::vector<ValueType>>;
 // Intermediate representation for Rules -- after parsing they'll need to be
 // resolved by looking each `ValueType` variant up in the environment.
 struct RuleIr {
-  ValueType target = {};
-  std::vector<ValueType> dependencies = {};
-  std::vector<ValueType> action = {};
+  const ValueType target;
+  const std::vector<ValueType> dependencies;
+  const std::vector<ValueType> action;
 };
 
 bool
@@ -130,8 +130,8 @@ operator<(const RuleIr &lhs, const RuleIr &rhs) {
 struct FabError final : std::runtime_error {
   template <typename T, typename U>
   struct Unexpected {
-    T expected;
-    U actual;
+    const T expected;
+    const U actual;
   };
 
   using UnexpectedCharacter = Unexpected<char, char>;
@@ -140,29 +140,29 @@ struct FabError final : std::runtime_error {
       Unexpected<std::vector<Option<TokenType>>, Option<TokenType>>;
 
   struct UndefinedVariable {
-    std::string_view var;
+    const std::string_view var;
   };
 
   struct UnknownTarget {
-    std::string_view target;
+    const std::string_view target;
   };
 
   struct ExpectedLValue {
-    std::string_view macro;
+    const std::string_view macro;
   };
 
   struct UnexpectedEof {};
 
   struct GetErrMsg {
     template <typename T>
-    std::string operator()(const Unexpected<T, T> &u) {
+    std::string operator()(const Unexpected<T, T> &u) const {
       auto ss = std::stringstream{};
       ss << "expected: " << u.expected << "; got: " << u.actual;
       return ss.str();
     }
 
     template <typename T>
-    std::string operator()(const Unexpected<std::vector<T>, T> &u) {
+    std::string operator()(const Unexpected<std::vector<T>, T> &u) const {
       auto ss = std::stringstream{};
       ss << "expected one of: {";
 
@@ -177,21 +177,21 @@ struct FabError final : std::runtime_error {
       return ss.str();
     }
 
-    std::string operator()(const UndefinedVariable &uv) {
+    std::string operator()(const UndefinedVariable &uv) const {
       return "undefined variable: " + std::string(uv.var.begin(), uv.var.end());
     }
 
-    std::string operator()(const UnknownTarget &ut) {
+    std::string operator()(const UnknownTarget &ut) const {
       return "no rule to make target `" +
              std::string(ut.target.begin(), ut.target.end()) + "'";
     }
 
-    std::string operator()(const ExpectedLValue &e) {
+    std::string operator()(const ExpectedLValue &e) const {
       return "expected lvalue but got macro at: " +
              std::string(e.macro.begin(), e.macro.end());
     }
 
-    std::string operator()(const UnexpectedEof &) {
+    std::string operator()(const UnexpectedEof &) const {
       return "unexpected <EOF>";
     }
   };
@@ -264,7 +264,7 @@ public:
 };
 
 class ParseState {
-  std::vector<Token> m_tokens = {};
+  const std::vector<Token> m_tokens;
   std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
   std::set<RuleIr> rules = {};
   std::vector<Association> macros = {};
@@ -330,12 +330,12 @@ class ParseState {
     return iden_list();
   }
 
-  bool matches(TokenType) {
+  static bool matches(TokenType) {
     return false;
   }
 
   template <typename... Tl>
-  bool matches(TokenType expected, TokenType head, Tl... tail) {
+  static bool matches(TokenType expected, TokenType head, Tl... tail) {
     return expected == head || matches(expected, tail...);
   }
 
@@ -349,7 +349,7 @@ class ParseState {
   std::vector<ValueType> iden_list() {
     std::vector<ValueType> idens;
 
-    while (matches(peek(), TokenType::Iden, TokenType::Macro)) {
+    while (ParseState::matches(peek(), TokenType::Iden, TokenType::Macro)) {
       idens.push_back(iden_status());
     }
 
@@ -381,7 +381,8 @@ public:
         throw FabError(
             FabError::ExpectedLValue{.macro = std::get<LValue>(iden).iden});
       }
-    } else if (matches(peeked, TokenType::Arrow, TokenType::LBrace)) {
+    } else if (ParseState::matches(peeked, TokenType::Arrow,
+                                   TokenType::LBrace)) {
       auto [dependencies, action] = rule();
       rules.insert(
           {.target = iden, .dependencies = dependencies, .action = action});
