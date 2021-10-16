@@ -1,7 +1,7 @@
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cctype>
+#include <concepts>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
@@ -9,6 +9,7 @@
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -58,7 +59,8 @@ operator<<(std::ostream &os, const Option<TokenType> &t) {
 
 template <typename Container, typename T, typename MkExn>
 const auto &
-find_or_throw(const Container &haystack, const T &needle, MkExn &&mk) {
+find_or_throw(const Container &haystack, const T &needle,
+              MkExn &&mk) requires std::invocable<MkExn> {
   auto it = haystack.find(needle);
 
   if (it == std::end(haystack)) {
@@ -68,15 +70,20 @@ find_or_throw(const Container &haystack, const T &needle, MkExn &&mk) {
   return *it;
 }
 
-template <typename Range, typename Delim>
+template <typename S>
+concept Concat = requires(S s) {
+  { std::string{} + s } -> std::same_as<std::string>;
+};
+
+template <typename R, typename D>
 std::string
-foldl(Range &&range, const Delim &d) {
+foldl(R &&range, const D &delim) requires std::ranges::range<R> && Concat<D> {
   std::string s = {};
 
   bool first = true;
   for (const auto &e : range) {
     if (!first) {
-      s += d;
+      s += delim;
     }
 
     s += e;
@@ -141,17 +148,15 @@ struct FabError final : std::runtime_error {
     }
 
     std::string operator()(const UndefinedVariable &uv) const {
-      return "undefined variable: " + std::string(uv.var.begin(), uv.var.end());
+      return "undefined variable: " + sv_to_string(uv.var);
     }
 
     std::string operator()(const UnknownTarget &ut) const {
-      return "no rule to make target `" +
-             std::string(ut.target.begin(), ut.target.end()) + "'";
+      return "no rule to make target `" + sv_to_string(ut.target) + "'";
     }
 
     std::string operator()(const ExpectedLValue &e) const {
-      return "expected lvalue but got macro at: " +
-             std::string(e.macro.begin(), e.macro.end());
+      return "expected lvalue but got macro at: " + sv_to_string(e.macro);
     }
 
     std::string operator()(const UnexpectedEof &) const {
@@ -240,12 +245,14 @@ public:
     return *m_offset;
   }
 
-  std::string_view extract_lexeme(auto begin, auto end) {
+  template <typename I>
+  std::string_view extract_lexeme(I begin,
+                                  I end) requires std::input_iterator<I> {
     return std::string_view{begin, end};
   }
 
-  template <typename Pred>
-  auto eat_until(Pred pred) {
+  template <typename P>
+  auto eat_until(P pred) requires std::predicate<P, char> {
     const auto begin = m_offset;
 
     while (!pred(next()))
@@ -543,11 +550,8 @@ resolve_irs(const std::map<std::string_view, std::string> &macros,
 }
 
 template <typename T>
-concept Moveable = std::is_move_constructible<T>::value;
-
-template <typename T>
 std::set<T, std::less<>>
-into_set(std::vector<T> vs) requires Moveable<T> {
+into_set(std::vector<T> vs) requires std::move_constructible<T> {
   return std::set<T, std::less<>>{
       std::make_move_iterator(vs.begin()),
       std::make_move_iterator(vs.end()),

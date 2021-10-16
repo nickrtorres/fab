@@ -4,7 +4,6 @@
 #include <optional>
 #include <set>
 #include <string_view>
-#include <vector>
 
 template <typename T>
 using Option = std::optional<T>;
