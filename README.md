@@ -4,8 +4,9 @@
 - [x] allow multiple prerequisites in each rule
 - [x] allow rules without dependencies
 - [x] allow multiple identifiers in each macro definition
-- [ ] allow inference rules
 - [x] support default rule
+- [ ] allow inference rules
+- [x] allow multiple actions in a single action block
 
 ### Maybe
 - [ ] implement the `-j` option

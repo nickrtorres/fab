@@ -178,6 +178,22 @@ struct FabError final : std::runtime_error {
   }
 };
 
+template <typename R>
+auto
+copy_collect(R &&range) requires std::ranges::range<R> {
+  std::vector<std::ranges::range_value_t<R>> out;
+  std::ranges::copy(range, std::back_inserter(out));
+  return out;
+}
+
+template <typename R>
+auto
+move_collect(R &&range) requires std::ranges::range<R> {
+  std::vector<std::ranges::range_value_t<R>> out;
+  std::ranges::move(range, std::back_inserter(out));
+  return out;
+}
+
 struct LValue {
   const std::string_view iden;
 };
@@ -202,7 +218,7 @@ using Association = std::tuple<std::string_view, std::vector<ValueType>>;
 struct RuleIr {
   const ValueType target;
   const std::vector<ValueType> prereqs;
-  const std::vector<ValueType> action;
+  const std::vector<std::vector<ValueType>> actions;
 };
 
 class LexState {
@@ -283,7 +299,8 @@ class ParseState {
     return actual;
   }
 
-  std::tuple<std::vector<ValueType>, std::vector<ValueType>> rule() {
+  std::tuple<std::vector<ValueType>, std::vector<std::vector<ValueType>>>
+  rule() {
     if (peek() != TokenType::LBrace) {
       eat(TokenType::Arrow);
     }
@@ -292,13 +309,12 @@ class ParseState {
 
     if (peek() == TokenType::SemiColon) {
       eat(TokenType::SemiColon);
-      return std::make_tuple(std::move(prereqs), std::vector<ValueType>{});
+      return std::make_tuple(std::move(prereqs),
+                             std::vector<std::vector<ValueType>>{});
     }
 
-    eat(TokenType::LBrace);
-    std::vector<ValueType> action = this->action();
-    eat(TokenType::RBrace);
-    return std::tuple{std::move(prereqs), std::move(action)};
+    std::vector<std::vector<ValueType>> actions = this->action();
+    return std::tuple{std::move(prereqs), std::move(actions)};
   }
 
   TokenType peek() const {
@@ -347,10 +363,22 @@ class ParseState {
     return expected == head || matches(expected, tail...);
   }
 
-  std::vector<ValueType> action() {
-    std::vector<ValueType> action;
-    auto actions = iden_list();
-    eat(TokenType::SemiColon);
+  std::vector<std::vector<ValueType>> action() {
+    eat(TokenType::LBrace);
+
+    bool done = false;
+    auto actions = std::vector<std::vector<ValueType>>{};
+
+    while (!done) {
+      actions.push_back(iden_list());
+      eat(TokenType::SemiColon);
+
+      if (TokenType::RBrace == peek()) {
+        done = true;
+      }
+    }
+
+    eat(TokenType::RBrace);
     return actions;
   }
 
@@ -393,8 +421,8 @@ public:
       }
     } else if (ParseState::matches(peeked, TokenType::Arrow,
                                    TokenType::LBrace)) {
-      auto [prereqs, action] = rule();
-      rules.push_back({.target = iden, .prereqs = prereqs, .action = action});
+      auto [prereqs, actions] = rule();
+      rules.push_back({.target = iden, .prereqs = prereqs, .actions = actions});
     } else {
       throw FabError(
           FabError::TokenNotInExpectedSet{.expected = {{TokenType::Eq},
@@ -537,24 +565,25 @@ resolve_irs(const std::map<std::string_view, std::string> &macros,
     const auto visitc = make_visitc<ValueType>(Resolver{macros});
     const auto target = visitc(ir.target);
 
-    auto prereqs = std::vector<std::string_view>{};
-    std::ranges::copy(std::views::transform(ir.prereqs, visitc),
-                      std::back_inserter(prereqs));
+    /* const */ auto prereqs =
+        copy_collect(std::views::transform(ir.prereqs, visitc));
+    const auto resolve_action_list =
+        [&](const std::vector<ValueType> &action_list) {
+          const auto action_visitc = make_visitc<ValueType>(ActionResolver{
+              .target = target, .prereqs = prereqs, .macros = macros});
 
-    const auto action_visitc = make_visitc<ValueType>(
-        ActionResolver{.target = target, .prereqs = prereqs, .macros = macros});
-    auto action = foldl(std::views::transform(ir.action, action_visitc), " ");
+          return foldl(std::views::transform(action_list, action_visitc), " ");
+        };
+
+    /* const */ auto actions =
+        copy_collect(std::views::transform(ir.actions, resolve_action_list));
 
     return Rule{.target = target,
                 .prereqs = std::move(prereqs),
-                .action = std::move(action)};
+                .actions = std::move(actions)};
   };
 
-  auto resolved = std::vector<Rule>{};
-  std::ranges::move(std::views::transform(irs, resolve_ir),
-                    std::back_inserter(resolved));
-
-  return resolved;
+  return move_collect(std::views::transform(irs, resolve_ir));
 }
 
 template <typename T>

@@ -55,4 +55,5 @@ if __name__ == '__main__':
     check('default_rule')
     check('macro_reference_macro')
     check('macros')
+    check('multiple_actions_in_action_block')
     check('target_alias')

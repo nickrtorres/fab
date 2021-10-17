@@ -6,22 +6,39 @@
 
 std::ostream &
 operator<<(std::ostream &os, const Rule &r) {
-  os << "{ .target = " << r.target;
+  os << "{.target = " << r.target;
 
   os << ".prereqs = [";
 
-  bool first = true;
-  for (auto d : r.prereqs) {
-    if (!first) {
-      os << ", ";
-    }
+  {
+    bool first = true;
+    for (auto d : r.prereqs) {
+      if (!first) {
+        os << ", ";
+      }
 
-    os << d;
-    first = false;
+      os << d;
+      first = false;
+    }
   }
 
   os << "]"
-     << ", .action = " << r.action << "}" << std::endl;
+     << ", .actions = [";
+
+  {
+    bool first = true;
+    for (auto a : r.actions) {
+      if (!first) {
+        os << ", ";
+      }
+
+      os << a;
+      first = false;
+    }
+  }
+
+  os << "]"
+     << "}";
 
   return os;
 }
@@ -90,7 +107,7 @@ TEST(Parser, ItParsesARule) {
   auto expected =
       std::set<Rule, std::less<>>{{.target = "main",
                                    .prereqs = {"main.cpp", "lib.cpp"},
-                                   .action = "c++ -o main main.cpp"}};
+                                   .actions = {"c++ -o main main.cpp"}}};
 
   ASSERT_EQ(expected, actual);
 }
@@ -99,8 +116,10 @@ TEST(Parser, ItLooksUpMacros) {
   auto tokens = lex("CC := cc; main <- main.c { $(CC) -o main main.c; }");
   auto actual = parse(std::move(tokens)).rules;
 
-  auto expected = std::set<Rule, std::less<>>{
-      {.target = "main", .prereqs = {"main.c"}, .action = "cc -o main main.c"}};
+  auto expected =
+      std::set<Rule, std::less<>>{{.target = "main",
+                                   .prereqs = {"main.c"},
+                                   .actions = {"cc -o main main.c"}}};
 
   ASSERT_EQ(expected, actual);
 }

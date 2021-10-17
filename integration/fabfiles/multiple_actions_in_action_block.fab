@@ -1,0 +1,8 @@
+a <- b {
+  echo 2;
+  echo 3;
+}
+
+b {
+  echo 1;
+}

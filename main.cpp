@@ -46,10 +46,12 @@ last_write(std::string_view path) {
 
 namespace detail {
 void
-run_system_cmd(const std::string &cmd) {
-  std::cerr << cmd << std::endl;
-  if (CMD_OK != system(cmd.c_str())) {
-    throw std::runtime_error("could not run command: " + cmd);
+run_system_cmds(std::vector<std::string> cmds) {
+  for (auto &cmd : cmds) {
+    std::cerr << cmd << std::endl;
+    if (CMD_OK != system(cmd.c_str())) {
+      throw std::runtime_error("could not run command: " + cmd);
+    }
   }
 }
 
@@ -61,7 +63,7 @@ eval(const Rule &rule) {
 
   // `target' doesn't exist -- it must be out of date!
   if (!std::filesystem::exists(rule.target)) {
-    run_system_cmd(rule.action);
+    run_system_cmds(rule.actions);
     return;
   }
 
@@ -74,7 +76,7 @@ eval(const Rule &rule) {
   auto max = *std::ranges::max_element(times.begin(), times.end());
 
   if (last_write(rule.target) < max) {
-    run_system_cmd(rule.action);
+    run_system_cmds(rule.actions);
   }
 }
 } // namespace detail

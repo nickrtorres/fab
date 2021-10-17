@@ -31,12 +31,12 @@ struct Token {
 struct Rule {
   const std::string_view target;
   const std::vector<std::string_view> prereqs;
-  const std::string action;
+  const std::vector<std::string> actions;
 
   bool operator==(const Rule &) const = default;
 
   inline bool is_phony() const {
-    return action.empty();
+    return actions.empty();
   }
 };
 
