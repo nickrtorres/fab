@@ -418,6 +418,12 @@ public:
 };
 
 namespace resolve {
+template <typename Variant, typename Visitor>
+constexpr auto
+make_visitc(Visitor visitor) {
+  return [=](const Variant &variant) { return std::visit(visitor, variant); };
+}
+
 template <typename T>
 concept ActionScope =
     std::is_same<TargetAlias, T>::value || std::is_same<PrereqAlias, T>::value;
@@ -497,11 +503,7 @@ resolve_associations(const std::vector<Association> &associations) {
 
   const auto resolve_with_visitor = [&macros = std::as_const(resolved),
                                      base_resolver](const auto &association) {
-    const auto visitc = [&](const auto &variant) {
-      auto visitor = Resolver{macros};
-      return std::visit(visitor, variant);
-    };
-
+    const auto visitc = make_visitc<ValueType>(Resolver{macros});
     return base_resolver(association, visitc);
   };
 
@@ -519,22 +521,15 @@ resolve_irs(const std::map<std::string_view, std::string> &macros,
             const std::vector<RuleIr> &irs) {
 
   const auto resolve_ir = [macros](const auto &ir) {
-    const auto visitc = [&](auto arg) {
-      const auto visitor = Resolver{macros};
-      return std::visit(visitor, arg);
-    };
-
+    const auto visitc = make_visitc<ValueType>(Resolver{macros});
     const auto target = visitc(ir.target);
+
     auto prereqs = std::vector<std::string_view>{};
     std::ranges::copy(std::views::transform(ir.prereqs, visitc),
                       std::back_inserter(prereqs));
 
-    auto action_visitc = [&, &prereqs = std::as_const(prereqs)](auto arg) {
-      const auto visitor = ActionResolver{
-          .target = target, .prereqs = prereqs, .macros = macros};
-      return std::visit(visitor, arg);
-    };
-
+    const auto action_visitc = make_visitc<ValueType>(
+        ActionResolver{.target = target, .prereqs = prereqs, .macros = macros});
     auto action = foldl(std::views::transform(ir.action, action_visitc), " ");
 
     return Rule{.target = target,
