@@ -418,9 +418,14 @@ public:
 };
 
 namespace resolve {
-template <typename Variant, typename Visitor>
+template <typename Visitor, typename Variant>
+concept Visit = requires(Visitor visitor, Variant variant) {
+  std::visit(visitor, variant);
+};
+
+template <typename Variant>
 constexpr auto
-make_visitc(Visitor visitor) {
+make_visitc(auto visitor) requires Visit<decltype(visitor), Variant> {
   return [=](const Variant &variant) { return std::visit(visitor, variant); };
 }
 
