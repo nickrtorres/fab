@@ -429,6 +429,14 @@ make_visitc(auto visitor) requires Visit<decltype(visitor), Variant> {
   return [=](const Variant &variant) { return std::visit(visitor, variant); };
 }
 
+// Fab's grammar supplies two main scopes: action and _everything else_.  The
+// only really special thing about action scope is visibility of _special_
+// macros -- namely make(1) style '$@' and '$<' to refer to the current target
+// and prerequisites, respectively. By design, this is not caught by the parser
+// (since it be just be a few more nasty if checks). Instead, this is encoded
+// directly into ValueType with the variants TargetAlias and PrereqAlias.
+// Resolver operator() overloads constrain their parameters with these two
+// concepts to disallow invalid Fab programs.
 template <typename T>
 concept ActionScope =
     std::is_same<TargetAlias, T>::value || std::is_same<PrereqAlias, T>::value;

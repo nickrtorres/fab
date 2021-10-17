@@ -74,22 +74,29 @@ std::vector<Token> lex(std::string_view source);
 // Parsing produces an environment that maps the schema specified by a fabfile
 // into proper C++ types.
 //
-// <Fabfile>    ::= <stmt_list>
-// <stmt_list>  ::= <stmt> <stmt_list>
-// <stmt_list>  ::= <stmt>
-// <stmt>       ::= <assignment>
-// <stmt>       ::= <rule>
-// <assignment> ::= <iden> := <iden_list>
-// <rule>       ::= <target> <- <iden_list> semicolon
-// <rule>       ::= <target> <- <iden_list> lbrace <action> rbrace
-// <rule>       ::= <target> lbrace <action> rbrace
-// <target>     ::= iden
-// <dep>        ::= iden
-// <action>     ::= iden_list
-// <iden_list>  ::= iden semicolon
-// <iden_list>  ::= macro semicolon
-// <iden_list>  ::= iden space <iden_list>
-// <iden_list>  ::= macro space <iden_list>
+// <Fabfile>       ::= <stmt_list>
+// <stmt_list>     ::= <stmt> <stmt_list>
+// <stmt_list>     ::= <stmt>
+// <stmt>          ::= <assignment>
+// <stmt>          ::= <rule>
+// <assignment>    ::= <iden> := <iden_list>
+// <rule>          ::= <target> <- <iden_list> SEMICOLON
+// <rule>          ::= <target> <- <iden_list> LBRACE <action> RBRACE
+// <rule>          ::= <target> LBRACE <action_list> RBRACE
+// <target>        ::= iden
+// <dep>           ::= iden
+// <alias>         ::= $@
+// <alias>         ::= $<
+// <action_list>   ::= <alias> <action_list>
+// <action_list>   ::= IDEN <action_list>
+// <action_list>   ::= MACRO <action_list>
+// <action_list>   ::= <alias> SEMICOLON
+// <action_list>   ::= IDEN SEMICOLON
+// <action_list>   ::= MACRO SEMICOLON
+// <iden_list>     ::= IDEN SEMICOLON
+// <iden_list>     ::= MACRO SEMICOLON
+// <iden_list>     ::= IDEN <iden_list>
+// <iden_list>     ::= MACRO <iden_list>
 Environment parse(std::vector<Token> &&tokens);
 
 #endif // FAB_H
