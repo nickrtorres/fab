@@ -9,16 +9,21 @@ template <typename T>
 using Option = std::optional<T>;
 
 enum class TokenType {
+  // Simple TokenTypes
   Arrow,
   Eof,
   Eq,
-  Iden,
   LBrace,
-  Macro,
+  PrereqAlias,
   RBrace,
   SemiColon,
   TargetAlias,
-  PrereqAlias,
+
+  // TokenTypes that carry data in the lexem field of the owning Token
+  Fill,
+  Iden,
+  Macro,
+  Stencil,
 };
 
 struct Token {
@@ -74,11 +79,18 @@ std::vector<Token> lex(std::string_view source);
 // Parsing produces an environment that maps the schema specified by a fabfile
 // into proper C++ types.
 //
+// clang-format off
 // <Fabfile>       ::= <stmt_list>
 // <stmt_list>     ::= <stmt> <stmt_list>
 // <stmt_list>     ::= <stmt>
 // <stmt>          ::= <assignment>
 // <stmt>          ::= <rule>
+// <stmt>          ::= <stencil>
+// <stmt>          ::= <fill>
+// <stencil>       ::= STENCIL EXTENSION <- STENCIL EXTENSION LBRACE <action_list> RBRACE
+// <stencil>       ::= STENCIL EXTENSION LBRACE <action_list> RBRACE
+// <fill>          ::= FILL <- FILL SEMICOLON
+// <fill>          ::= FILL SEMICOLON
 // <assignment>    ::= <iden> := <iden_list>
 // <rule>          ::= <target> <- <iden_list> SEMICOLON
 // <rule>          ::= <target> <- <iden_list> LBRACE <action> RBRACE
@@ -97,6 +109,22 @@ std::vector<Token> lex(std::string_view source);
 // <iden_list>     ::= MACRO SEMICOLON
 // <iden_list>     ::= IDEN <iden_list>
 // <iden_list>     ::= MACRO <iden_list>
+// clang-format on
 Environment parse(std::vector<Token> &&tokens);
+
+template <typename T>
+std::ostream &
+operator<<(std::ostream &os, const Option<T> &t) {
+  if (t) {
+    return os << t.value();
+  } else {
+    return os << "NONE";
+  }
+}
+
+std::ostream &operator<<(std::ostream &os, const Token &token);
+std::ostream &operator<<(std::ostream &os, const TokenType &t);
+std::ostream &operator<<(std::ostream &os, const Environment &env);
+std::ostream &operator<<(std::ostream &os, const Rule &r);
 
 #endif // FAB_H

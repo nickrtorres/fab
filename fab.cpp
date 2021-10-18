@@ -4,7 +4,6 @@
 #include <concepts>
 #include <cstdlib>
 #include <functional>
-#include <iostream>
 #include <map>
 #include <ranges>
 #include <sstream>
@@ -19,42 +18,6 @@ namespace {
 std::string
 sv_to_string(std::string_view sv) {
   return std::string{sv.cbegin(), sv.cend()};
-}
-
-std::ostream &
-operator<<(std::ostream &os, const TokenType &t) {
-  switch (t) {
-  case TokenType::Arrow:
-    return os << "<-";
-  case TokenType::SemiColon:
-    return os << ";";
-  case TokenType::LBrace:
-    return os << "{";
-  case TokenType::RBrace:
-    return os << "}";
-  case TokenType::Iden:
-    return os << "IDEN";
-  case TokenType::Eof:
-    return os << "EOF";
-  case TokenType::Eq:
-    return os << "=";
-  case TokenType::TargetAlias:
-    return os << "$@";
-  case TokenType::PrereqAlias:
-    return os << "$<";
-  default:
-    std::cerr << "FATAL: unhandled TokenType" << std::endl;
-    std::abort();
-  }
-}
-
-std::ostream &
-operator<<(std::ostream &os, const Option<TokenType> &t) {
-  if (t) {
-    return os << t.value();
-  } else {
-    return os << "<NONE>";
-  }
 }
 
 template <typename Container, typename T, typename MkExn>
@@ -92,6 +55,13 @@ foldl(R &&range, const D &delim) requires std::ranges::range<R> && Concat<D> {
 
   return s;
 }
+
+template <typename T, typename U>
+auto
+is_eq_c(const T &lhs) {
+  return [&lhs](const U &rhs) { return lhs == rhs; };
+}
+
 } // namespace
 
 namespace detail {
@@ -181,7 +151,7 @@ struct FabError final : std::runtime_error {
 template <typename R>
 auto
 copy_collect(R &&range) requires std::ranges::range<R> {
-  std::vector<std::ranges::range_value_t<R>> out;
+  std::vector<std::ranges::range_value_t<R>> out = {};
   std::ranges::copy(range, std::back_inserter(out));
   return out;
 }
@@ -219,6 +189,64 @@ struct RuleIr {
   const ValueType target;
   const std::vector<ValueType> prereqs;
   const std::vector<std::vector<ValueType>> actions;
+};
+
+namespace split {
+struct Extension {};
+
+std::size_t
+offset(std::string_view s) {
+  auto offset = s.rfind(".");
+
+  if (offset == std::string_view::npos) {
+    throw 0; // FIXME: FabError(FabError::InvalidFill{.fill = s});
+  }
+
+  return ++offset;
+}
+
+template <typename T>
+std::string_view
+on(std::string_view s) requires std::same_as<T, Extension> {
+  std::size_t pos = offset(s);
+  assert(pos < s.size());
+  return s.substr(pos);
+}
+} // namespace split
+
+struct Fill {
+  using Extension = split::Extension;
+
+  const std::string_view target;
+  const std::string_view target_ext;
+  const std::string_view prereq;
+  const std::string_view prereq_ext;
+
+  Fill(std::string_view t, std::string_view p)
+      : target(t)
+      , target_ext(split::on<Extension>(t))
+      , prereq(p)
+      , prereq_ext(split::on<Extension>(p)) {
+  }
+};
+
+struct Stencil {
+  const std::string_view target_ext;
+  const std::string_view prereq_ext;
+  const std::vector<std::vector<ValueType>> action_list;
+};
+
+bool
+operator==(const Stencil &lhs, const Fill &rhs) {
+  return std::tie(lhs.target_ext, lhs.prereq_ext) ==
+         std::tie(rhs.target_ext, rhs.prereq_ext);
+}
+
+struct Ir {
+  const std::vector<RuleIr> rules;
+  const std::vector<Association> associations;
+  const std::vector<Stencil> stencils;
+  const std::vector<Fill> fills;
 };
 
 class LexState {
@@ -284,9 +312,12 @@ public:
 class ParseState {
   const std::vector<Token> m_tokens;
   std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
-  std::vector<RuleIr> rules = {};
   std::vector<Association> macros = {};
+  std::vector<Fill> m_fills = {};
+  std::vector<RuleIr> rules = {};
+  std::vector<Stencil> m_stencils = {};
 
+private:
   const Token &eat(TokenType expected) {
     const auto &actual = *m_offset;
 
@@ -401,12 +432,49 @@ class ParseState {
     return idens;
   }
 
+  void stencil() {
+    auto target_ext = eat(TokenType::Stencil).lexeme.value();
+    auto prereq_ext = std::string_view{""};
+
+    if (peek() != TokenType::LBrace) {
+      eat(TokenType::Arrow);
+      prereq_ext = eat(TokenType::Stencil).lexeme.value();
+    }
+
+    m_stencils.push_back(Stencil{.target_ext = target_ext,
+                                 .prereq_ext = prereq_ext,
+                                 .action_list = std::move(action())});
+  }
+
+  void fill() {
+    auto target = eat(TokenType::Fill).lexeme.value();
+    auto prereq = std::string_view{""};
+
+    if (peek() != TokenType::SemiColon) {
+      eat(TokenType::Arrow);
+      prereq = eat(TokenType::Fill).lexeme.value();
+    }
+
+    eat(TokenType::SemiColon);
+    m_fills.push_back(Fill{target, prereq});
+  }
+
 public:
   ParseState(std::vector<Token> &&tokens)
       : m_tokens(tokens) {
   }
 
   void stmt_list() {
+    if (peek() == TokenType::Stencil) {
+      stencil();
+      return;
+    }
+
+    if (peek() == TokenType::Fill) {
+      fill();
+      return;
+    }
+
     auto iden = iden_status();
     auto peeked = peek();
 
@@ -437,11 +505,27 @@ public:
     return m_offset->token_type == TokenType::Eof;
   }
 
-  std::tuple<std::vector<RuleIr>, std::vector<Association>> destructure() {
-    auto rules = std::exchange(this->rules, {});
-    auto macros = std::exchange(this->macros, {});
+  Ir into_ir() && {
+    for (const auto &fill : m_fills) {
+      auto matching = std::find(m_stencils.cbegin(), m_stencils.cend(), fill);
 
-    return std::tie(rules, macros);
+      if (matching == m_stencils.end()) {
+        throw std::runtime_error{"No matching stencil for fill."};
+      } else {
+        rules.push_back(detail::RuleIr{
+            .target = detail::RValue{.iden = fill.target},
+            .prereqs = std::vector<detail::ValueType>{detail::RValue{
+                .iden = fill.prereq}},
+            .actions = matching->action_list});
+      }
+    }
+
+    return Ir{
+        .rules = std::move(rules),
+        .associations = std::move(macros),
+        .stencils = std::move(m_stencils),
+        .fills = std::move(m_fills),
+    };
   }
 };
 
@@ -460,11 +544,11 @@ make_visitc(auto visitor) requires Visit<decltype(visitor), Variant> {
 // Fab's grammar supplies two main scopes: action and _everything else_.  The
 // only really special thing about action scope is visibility of _special_
 // macros -- namely make(1) style '$@' and '$<' to refer to the current target
-// and prerequisites, respectively. By design, this is not caught by the parser
-// (since it be just be a few more nasty if checks). Instead, this is encoded
-// directly into ValueType with the variants TargetAlias and PrereqAlias.
-// Resolver operator() overloads constrain their parameters with these two
-// concepts to disallow invalid Fab programs.
+// and prerequisites, respectively. By design, this is not caught by the
+// parser (since it be just be a few more nasty if checks). Instead, this is
+// encoded directly into ValueType with the variants TargetAlias and
+// PrereqAlias. Resolver operator() overloads constrain their parameters with
+// these two concepts to disallow invalid Fab programs.
 template <typename T>
 concept ActionScope =
     std::is_same<TargetAlias, T>::value || std::is_same<PrereqAlias, T>::value;
@@ -557,9 +641,11 @@ resolve_associations(const std::vector<Association> &associations) {
   return resolved;
 }
 
-std::vector<Rule>
-resolve_irs(const std::map<std::string_view, std::string> &macros,
-            const std::vector<RuleIr> &irs) {
+template <typename Range>
+requires std::same_as<RuleIr, std::ranges::range_value_t<Range>>
+    std::vector<Rule>
+    resolve_irs(const std::map<std::string_view, std::string> &macros,
+                Range irs) {
 
   const auto resolve_ir = [macros](const auto &ir) {
     const auto visitc = make_visitc<ValueType>(Resolver{macros});
@@ -583,7 +669,7 @@ resolve_irs(const std::map<std::string_view, std::string> &macros,
                 .actions = std::move(actions)};
   };
 
-  return move_collect(std::views::transform(irs, resolve_ir));
+  return copy_collect(std::views::transform(irs, resolve_ir));
 }
 
 template <typename T>
@@ -594,15 +680,17 @@ into_set(std::vector<T> vs) requires std::move_constructible<T> {
       std::make_move_iterator(vs.end()),
   };
 }
+
 } // namespace detail
 
 Environment
-parse_state(ParseState state) {
-  const auto [irs, associations] = state.destructure();
-  /* const */ auto macros = detail::resolve_associations(associations);
-  /* const */ auto rules = detail::resolve_irs(macros, irs);
-  const std::string_view head = rules.front().target;
+parse_state(Ir ir) {
+  /* const */ auto macros = detail::resolve_associations(ir.associations);
+  /* const */ auto rules = detail::resolve_irs(macros, ir.rules);
 
+  // we want to crash if rules is empty
+  // FIXME: make this a FabException exception
+  const std::string_view head = rules.at(0).target;
   return Environment{.macros = std::move(macros),
                      .rules = detail::into_set(std::move(rules)),
                      .head = head};
@@ -644,6 +732,21 @@ lex(std::string_view source) {
       state.eat('-');
       tokens.push_back({TokenType::Arrow, {}});
       break;
+    case '[':
+      if (state.peek() == '*') {
+        state.eat('*');
+        state.eat('.');
+        auto [begin, end] = state.eat_until([](char c) { return c == ']'; });
+        state.eat(']');
+        tokens.push_back(
+            {TokenType::Stencil, state.extract_lexeme(begin, end)});
+        break;
+      } else {
+        auto [begin, end] = state.eat_until([](char c) { return c == ']'; });
+        state.eat(']');
+        tokens.emplace_back(TokenType::Fill, state.extract_lexeme(begin, end));
+        break;
+      }
     case '$': {
       if (state.peek() == '@') {
         state.eat('@');
@@ -685,7 +788,7 @@ parse(std::vector<Token> &&tokens) {
     state.stmt_list();
   }
 
-  return detail::resolve::parse_state(std::move(state));
+  return detail::resolve::parse_state(std::move(state).into_ir());
 }
 
 bool
@@ -698,4 +801,94 @@ Environment::get(std::string_view target) const {
   return find_or_throw(rules, target, [&target] {
     return detail::FabError(detail::FabError::UnknownTarget{.target = target});
   });
+}
+
+std::ostream &
+operator<<(std::ostream &os, const Token &token) {
+  os << token.token_type;
+
+  if (token.lexeme) {
+    os << "['" << token.lexeme.value() << "']";
+  }
+
+  return os;
+}
+
+std::ostream &
+operator<<(std::ostream &os, const TokenType &ty) {
+  switch (ty) {
+  case TokenType::Arrow:
+    return os << "ARROW";
+  case TokenType::Eof:
+    return os << "EOF";
+  case TokenType::Eq:
+    return os << "EQ";
+  case TokenType::Fill:
+    return os << "FILL";
+  case TokenType::Iden:
+    return os << "IDEN";
+  case TokenType::LBrace:
+    return os << "LBRACE";
+  case TokenType::Macro:
+    return os << "MACRO";
+  case TokenType::PrereqAlias:
+    return os << "PREREQALIAS";
+  case TokenType::RBrace:
+    return os << "RBRACE";
+  case TokenType::SemiColon:
+    return os << "SEMICOLON";
+  case TokenType::Stencil:
+    return os << "STENCIL";
+  case TokenType::TargetAlias:
+    return os << "TARGETALIAS";
+  default:
+    throw std::runtime_error{"unhandled token!"};
+  }
+}
+
+std::ostream &
+operator<<(std::ostream &os, const Environment &env) {
+  for (auto r : env.rules) {
+    os << r;
+  }
+
+  return os;
+}
+
+std::ostream &
+operator<<(std::ostream &os, const Rule &r) {
+  os << "{.target = " << r.target;
+  os << ", .prereqs = [";
+
+  {
+    bool first = true;
+    for (auto d : r.prereqs) {
+      if (!first) {
+        os << ", ";
+      }
+
+      os << d;
+      first = false;
+    }
+  }
+
+  os << "]"
+     << ", .actions = [";
+
+  {
+    bool first = true;
+    for (auto a : r.actions) {
+      if (!first) {
+        os << ", ";
+      }
+
+      os << a;
+      first = false;
+    }
+  }
+
+  os << "]"
+     << "}";
+
+  return os;
 }

@@ -4,54 +4,6 @@
 
 #include "fab.h"
 
-std::ostream &
-operator<<(std::ostream &os, const Rule &r) {
-  os << "{.target = " << r.target;
-
-  os << ".prereqs = [";
-
-  {
-    bool first = true;
-    for (auto d : r.prereqs) {
-      if (!first) {
-        os << ", ";
-      }
-
-      os << d;
-      first = false;
-    }
-  }
-
-  os << "]"
-     << ", .actions = [";
-
-  {
-    bool first = true;
-    for (auto a : r.actions) {
-      if (!first) {
-        os << ", ";
-      }
-
-      os << a;
-      first = false;
-    }
-  }
-
-  os << "]"
-     << "}";
-
-  return os;
-}
-
-std::ostream &
-operator<<(std::ostream &os, const Environment &env) {
-  for (auto r : env.rules) {
-    os << r;
-  }
-
-  return os;
-}
-
 TEST(Lexer, ItRecognizesArrows) {
   auto actual = lex("<-");
 
@@ -100,6 +52,20 @@ TEST(Lexer, ItExpectsValidTokens) {
   ASSERT_THROW(lex("<="), std::runtime_error);
 }
 
+TEST(Lexer, ItRecognizesStencils) {
+  auto actual = lex("[*.o] <- [*.c] { cc -o $@ $<; }");
+
+  auto expected = std::vector<Token>{
+      {TokenType::Stencil, {"o"}},  {TokenType::Arrow, {}},
+      {TokenType::Stencil, {"c"}},  {TokenType::LBrace, {}},
+      {TokenType::Iden, "cc"},      {TokenType::Iden, "-o"},
+      {TokenType::TargetAlias, {}}, {TokenType::PrereqAlias, {}},
+      {TokenType::SemiColon, {}},   {TokenType::RBrace, {}},
+      {TokenType::Eof, {}}};
+
+  ASSERT_EQ(expected, actual);
+}
+
 TEST(Parser, ItParsesARule) {
   auto tokens = lex("main <- main.cpp lib.cpp { c++ -o main main.cpp; }");
   auto actual = parse(std::move(tokens)).rules;
@@ -132,6 +98,20 @@ TEST(Parser, ItExpectsSemicolons) {
 TEST(Parser, ItOnlyKnowsDefinedVariables) {
   auto tokens = lex("main <- main.cpp { $(cmd); }");
   ASSERT_THROW(parse(std::move(tokens)), std::runtime_error);
+}
+
+TEST(Parser, ItCanFillStencils) {
+  auto tokens = lex("[*.o] <- [*.c] { cc -c $<; } [main.o] <- [main.c]; main "
+                    "<- main.o { cc -o $@ $<; }");
+  auto actual = parse(std::move(tokens)).rules;
+
+  auto expected = std::set<Rule, std::less<>>{
+      {.target = "main.o", .prereqs = {"main.c"}, .actions = {"cc -c main.c"}},
+      {.target = "main",
+       .prereqs = {"main.o"},
+       .actions = {"cc -o main main.o"}}};
+
+  ASSERT_EQ(actual, expected);
 }
 
 int

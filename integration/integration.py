@@ -56,4 +56,5 @@ if __name__ == '__main__':
     check('macro_reference_macro')
     check('macros')
     check('multiple_actions_in_action_block')
+    check('stencil')
     check('target_alias')

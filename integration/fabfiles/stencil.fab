@@ -1,0 +1,7 @@
+[*.txt] <- [*.txt] {
+  echo $@ requires $<;
+}
+
+[foo.txt] <- [bar.txt];
+
+foo <- foo.txt;

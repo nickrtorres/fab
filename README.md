@@ -75,13 +75,33 @@ lib.o <- lib.c {
 }
 ```
 
+Fab also allows generic rules -- similar to make's inference rules. A generic
+rule is created by providing a basic outline of the rule -- called a stencil --
+and then filling in that outline -- called a fill. The general syntax is
+demonstrated below.
+```
+CC := /opt/bin/gcc;
+
+main <- main.o lib.o {
+  $(CC) -o $@ $<;
+}
+
+[main.o] <- [main.c];
+
+[lib.o] <- [lib.c];
+
+[*.o] <- [*.c] {
+  cc -c $<;
+}
+```
+
 ### TODO
 - [x] allow multiple prerequisites in each rule
 - [x] allow rules without dependencies
 - [x] allow multiple identifiers in each macro definition
 - [x] support default rule
 - [x] allow multiple actions in a single action block
-- [ ] allow inference rules
+- [x] allow inference rules
 
 
 [concepts]: https://en.cppreference.com/w/cpp/language/constraints
