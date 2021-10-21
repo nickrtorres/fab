@@ -291,13 +291,19 @@ private:
   const Token &eat(TokenType expected) {
     const auto &actual = *m_offset;
 
-    if (expected != actual.token_type) {
+    if (expected != actual.token_type()) {
       throw FabError(FabError::UnexpectedTokenType{
-          .expected = expected, .actual = actual.token_type});
+          .expected = expected, .actual = actual.token_type()});
     }
 
     m_offset = std::next(m_offset);
     return actual;
+  }
+
+  template <TokenType ty>
+  std::string_view eat_for_lexeme() {
+    static_assert(Token::complex<ty>(), "Only complex tokens have lexemes.");
+    return eat(ty).lexeme<ty>();
   }
 
   std::tuple<std::vector<ValueType>, std::vector<std::vector<ValueType>>>
@@ -323,7 +329,7 @@ private:
       throw FabError(FabError::UnexpectedEof{});
       return {};
     } else {
-      return m_offset->token_type;
+      return m_offset->token_type();
     }
   }
 
@@ -331,9 +337,9 @@ private:
     auto peeked = peek();
 
     if (TokenType::Iden == peeked) {
-      return RValue{eat(TokenType::Iden).lexeme.value()};
+      return RValue{eat_for_lexeme<TokenType::Iden>()};
     } else if (TokenType::Macro == peeked) {
-      return LValue{eat(TokenType::Macro).lexeme.value()};
+      return LValue{eat_for_lexeme<TokenType::Macro>()};
     } else if (TokenType::TargetAlias == peeked) {
       eat(TokenType::TargetAlias);
       return TargetAlias{};
@@ -403,12 +409,12 @@ private:
   }
 
   void stencil() {
-    auto target_ext = eat(TokenType::Stencil).lexeme.value();
+    auto target_ext = eat_for_lexeme<TokenType::Stencil>();
     auto prereq_ext = std::string_view{""};
 
     if (peek() != TokenType::LBrace) {
       eat(TokenType::Arrow);
-      prereq_ext = eat(TokenType::Stencil).lexeme.value();
+      prereq_ext = eat_for_lexeme<TokenType::Stencil>();
     }
 
     m_stencils.push_back(Stencil{.target_ext = target_ext,
@@ -417,12 +423,12 @@ private:
   }
 
   void fill() {
-    auto target = eat(TokenType::Fill).lexeme.value();
+    auto target = eat_for_lexeme<TokenType::Fill>();
     auto prereq = std::string_view{""};
 
     if (peek() != TokenType::SemiColon) {
       eat(TokenType::Arrow);
-      prereq = eat(TokenType::Fill).lexeme.value();
+      prereq = eat_for_lexeme<TokenType::Fill>();
     }
 
     eat(TokenType::SemiColon);
@@ -473,7 +479,7 @@ public:
 
   bool eof() const {
     assert(m_offset != tokens.cend());
-    return m_offset->token_type == TokenType::Eof;
+    return m_offset->token_type() == TokenType::Eof;
   }
 
   Ir into_ir() && {
@@ -686,20 +692,20 @@ lex(std::string_view source) {
       break;
     case ':':
       state.eat('=');
-      tokens.push_back({TokenType::Eq, {}});
+      tokens.push_back(Token::make<TokenType::Eq>());
       break;
     case ';':
-      tokens.push_back({TokenType::SemiColon, {}});
+      tokens.push_back(Token::make<TokenType::SemiColon>());
       break;
     case '{':
-      tokens.push_back({TokenType::LBrace, {}});
+      tokens.push_back(Token::make<TokenType::LBrace>());
       break;
     case '}':
-      tokens.push_back({TokenType::RBrace, {}});
+      tokens.push_back(Token::make<TokenType::RBrace>());
       break;
     case '<':
       state.eat('-');
-      tokens.push_back({TokenType::Arrow, {}});
+      tokens.push_back(Token::make<TokenType::Arrow>());
       break;
     case '[':
       if (state.peek() == '*') {
@@ -708,30 +714,32 @@ lex(std::string_view source) {
         auto [begin, end] = state.eat_until([](char c) { return c == ']'; });
         state.eat(']');
         tokens.push_back(
-            {TokenType::Stencil, state.extract_lexeme(begin, end)});
+            Token::make<TokenType::Stencil>(state.extract_lexeme(begin, end)));
         break;
       } else {
         auto [begin, end] = state.eat_until([](char c) { return c == ']'; });
         state.eat(']');
-        tokens.emplace_back(TokenType::Fill, state.extract_lexeme(begin, end));
+        tokens.push_back(
+            Token::make<TokenType::Fill>(state.extract_lexeme(begin, end)));
         break;
       }
     case '$': {
       if (state.peek() == '@') {
         state.eat('@');
-        tokens.push_back({TokenType::TargetAlias, {}});
+        tokens.push_back(Token::make<TokenType::TargetAlias>());
         break;
       }
 
       if (state.peek() == '<') {
         state.eat('<');
-        tokens.push_back({TokenType::PrereqAlias, {}});
+        tokens.push_back(Token::make<TokenType::PrereqAlias>());
         break;
       }
 
       state.eat('(');
       auto [begin, end] = state.eat_until([](char c) { return c == ')'; });
-      tokens.emplace_back(TokenType::Macro, state.extract_lexeme(begin, end));
+      tokens.push_back(
+          Token::make<TokenType::Macro>(state.extract_lexeme(begin, end)));
       state.eat(')');
       break;
     }
@@ -739,14 +747,14 @@ lex(std::string_view source) {
       auto [begin, end] = state.eat_until(
           [](char c) { return c == ' ' || c == '\n' || c == ';'; });
 
-      tokens.emplace_back(TokenType::Iden,
-                          state.extract_lexeme(std::prev(begin), end));
+      tokens.push_back(Token::make<TokenType::Iden>(
+          state.extract_lexeme(std::prev(begin), end)));
       break;
     }
     }
   }
 
-  tokens.push_back({TokenType::Eof, {}});
+  tokens.push_back(Token::make<TokenType::Eof>());
   return tokens;
 }
 
@@ -774,10 +782,19 @@ Environment::get(std::string_view target) const {
 
 std::ostream &
 operator<<(std::ostream &os, const Token &token) {
-  os << token.token_type;
+  os << token.token_type();
 
-  if (token.lexeme) {
-    os << "['" << token.lexeme.value() << "']";
+  switch (token.token_type()) {
+  case TokenType::Fill:
+    os << "['" << token.lexeme<TokenType::Fill>() << "']";
+  case TokenType::Iden:
+    os << "['" << token.lexeme<TokenType::Iden>() << "']";
+  case TokenType::Macro:
+    os << "['" << token.lexeme<TokenType::Macro>() << "']";
+  case TokenType::Stencil:
+    os << "['" << token.lexeme<TokenType::Stencil>() << "']";
+  default:
+    break;
   }
 
   return os;

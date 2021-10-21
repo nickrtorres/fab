@@ -19,18 +19,56 @@ enum class TokenType {
   SemiColon,
   TargetAlias,
 
-  // TokenTypes that carry data in the lexem field of the owning Token
+  // Complex tokens -- ie. those that have a non-null lexeme.
   Fill,
   Iden,
   Macro,
   Stencil,
 };
 
-struct Token {
-  const TokenType token_type;
-  const Option<std::string_view> lexeme;
+class Token {
+  const TokenType m_token_type;
+  const Option<std::string_view> m_lexeme;
 
+  Token(TokenType token_type, Option<std::string_view> lexeme)
+      : m_token_type(token_type)
+      , m_lexeme(lexeme) {
+  }
+
+public:
   bool operator==(const Token &) const = default;
+
+  template <TokenType token_type>
+  static Token make(Option<std::string_view> lexeme) {
+    static_assert(Token::complex<token_type>(),
+                  "Only complex tokens have lexemes. Use the no-arg "
+                  "constructor for simple tokens.");
+    return Token(token_type, lexeme);
+  }
+
+  template <TokenType token_type>
+  static Token make() {
+    return Token(token_type, {});
+  }
+
+  template <TokenType token_type>
+  std::string_view lexeme() const {
+    static_assert(Token::complex<token_type>(),
+                  "Only complex tokens have lexemes.");
+
+    assert(m_lexeme.has_value());
+    return m_lexeme.value();
+  }
+
+  TokenType token_type() const {
+    return m_token_type;
+  }
+
+  template <TokenType ty>
+  constexpr static bool complex() {
+    return TokenType::Fill == ty || TokenType::Iden == ty ||
+           TokenType::Macro == ty || TokenType::Stencil == ty;
+  }
 };
 
 struct Rule {
