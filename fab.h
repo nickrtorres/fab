@@ -35,6 +35,12 @@ class Token {
       , m_lexeme(lexeme) {
   }
 
+  template <TokenType ty>
+  constexpr static bool complex() {
+    return TokenType::Fill == ty || TokenType::Iden == ty ||
+           TokenType::Macro == ty || TokenType::Stencil == ty;
+  }
+
 public:
   bool operator==(const Token &) const = default;
 
@@ -62,12 +68,6 @@ public:
 
   TokenType token_type() const {
     return m_token_type;
-  }
-
-  template <TokenType ty>
-  constexpr static bool complex() {
-    return TokenType::Fill == ty || TokenType::Iden == ty ||
-           TokenType::Macro == ty || TokenType::Stencil == ty;
   }
 };
 

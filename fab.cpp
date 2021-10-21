@@ -302,7 +302,6 @@ private:
 
   template <TokenType ty>
   std::string_view eat_for_lexeme() {
-    static_assert(Token::complex<ty>(), "Only complex tokens have lexemes.");
     return eat(ty).lexeme<ty>();
   }
 
