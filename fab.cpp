@@ -55,13 +55,6 @@ foldl(R &&range, const D &delim) requires std::ranges::range<R> && Concat<D> {
 
   return s;
 }
-
-template <typename T, typename U>
-auto
-is_eq_c(const T &lhs) {
-  return [&lhs](const U &rhs) { return lhs == rhs; };
-}
-
 } // namespace
 
 namespace detail {
@@ -156,14 +149,6 @@ copy_collect(R &&range) requires std::ranges::range<R> {
   return out;
 }
 
-template <typename R>
-auto
-move_collect(R &&range) requires std::ranges::range<R> {
-  std::vector<std::ranges::range_value_t<R>> out;
-  std::ranges::move(range, std::back_inserter(out));
-  return out;
-}
-
 struct LValue {
   const std::string_view iden;
 };
@@ -191,31 +176,18 @@ struct RuleIr {
   const std::vector<std::vector<ValueType>> actions;
 };
 
-namespace split {
-struct Extension {};
-
-std::size_t
-offset(std::string_view s) {
-  auto offset = s.rfind(".");
-
-  if (offset == std::string_view::npos) {
-    throw 0; // FIXME: FabError(FabError::InvalidFill{.fill = s});
-  }
-
-  return ++offset;
-}
-
-template <typename T>
-std::string_view
-on(std::string_view s) requires std::same_as<T, Extension> {
-  std::size_t pos = offset(s);
-  assert(pos < s.size());
-  return s.substr(pos);
-}
-} // namespace split
-
 struct Fill {
-  using Extension = split::Extension;
+  static std::string_view get_extension(std::string_view s) {
+    auto offset = s.rfind(".");
+
+    if (offset == std::string_view::npos) {
+      throw 0; // FIXME: FabError(FabError::InvalidFill{.fill = s});
+    }
+
+    offset += 1;
+    assert(offset < s.size());
+    return s.substr(offset);
+  }
 
   const std::string_view target;
   const std::string_view target_ext;
@@ -224,9 +196,9 @@ struct Fill {
 
   Fill(std::string_view t, std::string_view p)
       : target(t)
-      , target_ext(split::on<Extension>(t))
+      , target_ext(get_extension(t))
       , prereq(p)
-      , prereq_ext(split::on<Extension>(p)) {
+      , prereq_ext(get_extension(p)) {
   }
 };
 
@@ -245,17 +217,15 @@ operator==(const Stencil &lhs, const Fill &rhs) {
 struct Ir {
   const std::vector<RuleIr> rules;
   const std::vector<Association> associations;
-  const std::vector<Stencil> stencils;
-  const std::vector<Fill> fills;
 };
 
 class LexState {
-  const std::string_view m_buf;
-  std::string_view::const_iterator m_offset = m_buf.cbegin();
+  const std::string_view buf;
+  std::string_view::const_iterator m_offset = buf.cbegin();
 
 public:
   LexState(std::string_view source)
-      : m_buf(source) {
+      : buf(source) {
   }
 
   [[nodiscard]] char next() {
@@ -269,7 +239,7 @@ public:
   }
 
   bool eof() const {
-    return m_offset == m_buf.cend();
+    return m_offset == buf.cend();
   }
 
   void eat(char expected) {
@@ -302,7 +272,7 @@ public:
     while (!pred(next()))
       ;
 
-    assert(m_offset != m_buf.begin());
+    assert(m_offset != buf.begin());
     m_offset = std::prev(m_offset);
 
     return std::tuple{begin, m_offset};
@@ -310,11 +280,11 @@ public:
 };
 
 class ParseState {
-  const std::vector<Token> m_tokens;
-  std::vector<Token>::const_iterator m_offset = m_tokens.cbegin();
-  std::vector<Association> macros = {};
+  const std::vector<Token> tokens;
+  std::vector<Token>::const_iterator m_offset = tokens.cbegin();
+  std::vector<Association> m_associations = {};
   std::vector<Fill> m_fills = {};
-  std::vector<RuleIr> rules = {};
+  std::vector<RuleIr> m_rules = {};
   std::vector<Stencil> m_stencils = {};
 
 private:
@@ -461,7 +431,7 @@ private:
 
 public:
   ParseState(std::vector<Token> &&tokens)
-      : m_tokens(tokens) {
+      : tokens(tokens) {
   }
 
   void stmt_list() {
@@ -482,7 +452,7 @@ public:
       if (std::holds_alternative<RValue>(iden)) {
         auto lhs = std::get<RValue>(iden).iden;
         auto rhs = assignment();
-        macros.emplace_back(lhs, rhs);
+        m_associations.emplace_back(lhs, rhs);
       } else {
         throw FabError(
             FabError::ExpectedLValue{.macro = std::get<LValue>(iden).iden});
@@ -490,7 +460,8 @@ public:
     } else if (ParseState::matches(peeked, TokenType::Arrow,
                                    TokenType::LBrace)) {
       auto [prereqs, actions] = rule();
-      rules.push_back({.target = iden, .prereqs = prereqs, .actions = actions});
+      m_rules.push_back(
+          {.target = iden, .prereqs = prereqs, .actions = actions});
     } else {
       throw FabError(
           FabError::TokenNotInExpectedSet{.expected = {{TokenType::Eq},
@@ -501,7 +472,7 @@ public:
   }
 
   bool eof() const {
-    assert(m_offset != m_tokens.cend());
+    assert(m_offset != tokens.cend());
     return m_offset->token_type == TokenType::Eof;
   }
 
@@ -512,7 +483,7 @@ public:
       if (matching == m_stencils.end()) {
         throw std::runtime_error{"No matching stencil for fill."};
       } else {
-        rules.push_back(detail::RuleIr{
+        m_rules.push_back(detail::RuleIr{
             .target = detail::RValue{.iden = fill.target},
             .prereqs = std::vector<detail::ValueType>{detail::RValue{
                 .iden = fill.prereq}},
@@ -521,10 +492,8 @@ public:
     }
 
     return Ir{
-        .rules = std::move(rules),
-        .associations = std::move(macros),
-        .stencils = std::move(m_stencils),
-        .fills = std::move(m_fills),
+        .rules = std::move(m_rules),
+        .associations = std::move(m_associations),
     };
   }
 };
