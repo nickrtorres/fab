@@ -8,67 +8,65 @@
 template <typename T>
 using Option = std::optional<T>;
 
-enum class TokenType {
-  // Simple TokenTypes
-  Arrow,
-  Eof,
-  Eq,
-  LBrace,
-  PrereqAlias,
-  RBrace,
-  SemiColon,
-  TargetAlias,
-
-  // Complex tokens -- ie. those that have a non-null lexeme.
-  Fill,
-  Iden,
-  Macro,
-  Stencil,
-};
-
 class Token {
-  const TokenType m_token_type;
+public:
+  enum class Ty {
+    // Simple
+    Arrow,
+    Eof,
+    Eq,
+    LBrace,
+    PrereqAlias,
+    RBrace,
+    SemiColon,
+    TargetAlias,
+
+    // Complex
+    Fill,
+    Iden,
+    Macro,
+    Stencil,
+  };
+
+private:
+  const Token::Ty m_ty;
   const Option<std::string_view> m_lexeme;
 
-  Token(TokenType token_type, Option<std::string_view> lexeme)
-      : m_token_type(token_type)
-      , m_lexeme(lexeme) {
+  template <Token::Ty ty>
+  constexpr static bool complex() {
+    return Token::Ty::Fill == ty || Token::Ty::Iden == ty ||
+           Token::Ty::Macro == ty || Token::Ty::Stencil == ty;
   }
 
-  template <TokenType ty>
-  constexpr static bool complex() {
-    return TokenType::Fill == ty || TokenType::Iden == ty ||
-           TokenType::Macro == ty || TokenType::Stencil == ty;
-  }
+  Token(Token::Ty, Option<std::string_view>);
 
 public:
-  bool operator==(const Token &) const = default;
-
-  template <TokenType token_type>
+  template <Token::Ty ty>
   static Token make(Option<std::string_view> lexeme) {
-    static_assert(Token::complex<token_type>(),
-                  "Only complex tokens have lexemes. Use the no-arg "
-                  "constructor for simple tokens.");
-    return Token(token_type, lexeme);
+    static_assert(Token::complex<ty>(),
+                  "Only complex tokens have lexemes. Use Token::make() for "
+                  "simple tokens.");
+    return Token(ty, lexeme);
   }
 
-  template <TokenType token_type>
+  template <Token::Ty ty>
   static Token make() {
-    return Token(token_type, {});
+    return Token(ty, {});
   }
 
-  template <TokenType token_type>
+  template <Token::Ty ty>
   std::string_view lexeme() const {
-    static_assert(Token::complex<token_type>(),
-                  "Only complex tokens have lexemes.");
+    static_assert(Token::complex<ty>(), "Only complex tokens have lexemes.");
 
     assert(m_lexeme.has_value());
     return m_lexeme.value();
   }
 
-  TokenType token_type() const {
-    return m_token_type;
+  inline Token::Ty ty() const {
+    return m_ty;
   }
+
+  bool operator==(const Token &) const = default;
 };
 
 struct Rule {
@@ -83,20 +81,9 @@ struct Rule {
   }
 };
 
-inline bool
-operator<(const Rule &lhs, std::string_view rhs) {
-  return lhs.target < rhs;
-}
-
-inline bool
-operator<(std::string_view lhs, const Rule &rhs) {
-  return lhs < rhs.target;
-}
-
-inline bool
-operator<(const Rule &lhs, const Rule &rhs) {
-  return lhs.target < rhs.target;
-}
+bool operator<(const Rule &lhs, std::string_view rhs);
+bool operator<(std::string_view lhs, const Rule &rhs);
+bool operator<(const Rule &lhs, const Rule &rhs);
 
 struct Environment {
   // During parsing the resolver needs to allocate strings for macro lookup. The
@@ -161,7 +148,7 @@ operator<<(std::ostream &os, const Option<T> &t) {
 }
 
 std::ostream &operator<<(std::ostream &os, const Token &token);
-std::ostream &operator<<(std::ostream &os, const TokenType &t);
+std::ostream &operator<<(std::ostream &os, const Token::Ty &t);
 std::ostream &operator<<(std::ostream &os, const Environment &env);
 std::ostream &operator<<(std::ostream &os, const Rule &r);
 

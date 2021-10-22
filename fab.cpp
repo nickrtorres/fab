@@ -66,9 +66,9 @@ struct FabError final : std::runtime_error {
   };
 
   using UnexpectedCharacter = Unexpected<char, char>;
-  using UnexpectedTokenType = Unexpected<TokenType, TokenType>;
+  using UnexpectedTokenType = Unexpected<Token::Ty, Token::Ty>;
   using TokenNotInExpectedSet =
-      Unexpected<std::vector<Option<TokenType>>, Option<TokenType>>;
+      Unexpected<std::vector<Option<Token::Ty>>, Option<Token::Ty>>;
 
   struct UndefinedVariable {
     const std::string_view var;
@@ -288,33 +288,33 @@ class ParseState {
   std::vector<Stencil> m_stencils = {};
 
 private:
-  const Token &eat(TokenType expected) {
+  const Token &eat(Token::Ty expected) {
     const auto &actual = *m_offset;
 
-    if (expected != actual.token_type()) {
-      throw FabError(FabError::UnexpectedTokenType{
-          .expected = expected, .actual = actual.token_type()});
+    if (expected != actual.ty()) {
+      throw FabError(FabError::UnexpectedTokenType{.expected = expected,
+                                                   .actual = actual.ty()});
     }
 
     m_offset = std::next(m_offset);
     return actual;
   }
 
-  template <TokenType ty>
+  template <Token::Ty ty>
   std::string_view eat_for_lexeme() {
     return eat(ty).lexeme<ty>();
   }
 
   std::tuple<std::vector<ValueType>, std::vector<std::vector<ValueType>>>
   rule() {
-    if (peek() != TokenType::LBrace) {
-      eat(TokenType::Arrow);
+    if (peek() != Token::Ty::LBrace) {
+      eat(Token::Ty::Arrow);
     }
 
     std::vector<ValueType> prereqs = this->prereqs();
 
-    if (peek() == TokenType::SemiColon) {
-      eat(TokenType::SemiColon);
+    if (peek() == Token::Ty::SemiColon) {
+      eat(Token::Ty::SemiColon);
       return std::make_tuple(std::move(prereqs),
                              std::vector<std::vector<ValueType>>{});
     }
@@ -323,31 +323,31 @@ private:
     return std::tuple{std::move(prereqs), std::move(actions)};
   }
 
-  TokenType peek() const {
+  Token::Ty peek() const {
     if (eof()) {
       throw FabError(FabError::UnexpectedEof{});
       return {};
     } else {
-      return m_offset->token_type();
+      return m_offset->ty();
     }
   }
 
   ValueType iden_status() {
     auto peeked = peek();
 
-    if (TokenType::Iden == peeked) {
-      return RValue{eat_for_lexeme<TokenType::Iden>()};
-    } else if (TokenType::Macro == peeked) {
-      return LValue{eat_for_lexeme<TokenType::Macro>()};
-    } else if (TokenType::TargetAlias == peeked) {
-      eat(TokenType::TargetAlias);
+    if (Token::Ty::Iden == peeked) {
+      return RValue{eat_for_lexeme<Token::Ty::Iden>()};
+    } else if (Token::Ty::Macro == peeked) {
+      return LValue{eat_for_lexeme<Token::Ty::Macro>()};
+    } else if (Token::Ty::TargetAlias == peeked) {
+      eat(Token::Ty::TargetAlias);
       return TargetAlias{};
-    } else if (TokenType::PrereqAlias == peeked) {
-      eat(TokenType::PrereqAlias);
+    } else if (Token::Ty::PrereqAlias == peeked) {
+      eat(Token::Ty::PrereqAlias);
       return PrereqAlias{};
     } else {
       throw FabError(FabError::TokenNotInExpectedSet{
-          .expected = {{TokenType::Iden}, {TokenType::Macro}},
+          .expected = {{Token::Ty::Iden}, {Token::Ty::Macro}},
           .actual = peeked});
     }
   }
@@ -360,40 +360,40 @@ private:
     return iden_list();
   }
 
-  static bool matches(TokenType) {
+  static bool matches(Token::Ty) {
     return false;
   }
 
   template <typename... Tl>
-  static bool matches(TokenType expected, TokenType head, Tl... tail) {
+  static bool matches(Token::Ty expected, Token::Ty head, Tl... tail) {
     return expected == head || matches(expected, tail...);
   }
 
   std::vector<std::vector<ValueType>> action() {
-    eat(TokenType::LBrace);
+    eat(Token::Ty::LBrace);
 
     bool done = false;
     auto actions = std::vector<std::vector<ValueType>>{};
 
     while (!done) {
       actions.push_back(iden_list());
-      eat(TokenType::SemiColon);
+      eat(Token::Ty::SemiColon);
 
-      if (TokenType::RBrace == peek()) {
+      if (Token::Ty::RBrace == peek()) {
         done = true;
       }
     }
 
-    eat(TokenType::RBrace);
+    eat(Token::Ty::RBrace);
     return actions;
   }
 
   std::vector<ValueType> iden_list() {
     std::vector<ValueType> idens;
 
-    while (ParseState::matches(peek(), TokenType::Iden, TokenType::Macro,
-                               TokenType::TargetAlias,
-                               TokenType::PrereqAlias)) {
+    while (ParseState::matches(peek(), Token::Ty::Iden, Token::Ty::Macro,
+                               Token::Ty::TargetAlias,
+                               Token::Ty::PrereqAlias)) {
       idens.push_back(iden_status());
     }
 
@@ -401,19 +401,19 @@ private:
   }
 
   std::vector<ValueType> assignment() {
-    eat(TokenType::Eq);
+    eat(Token::Ty::Eq);
     auto idens = iden_list();
-    eat(TokenType::SemiColon);
+    eat(Token::Ty::SemiColon);
     return idens;
   }
 
   void stencil() {
-    auto target_ext = eat_for_lexeme<TokenType::Stencil>();
+    auto target_ext = eat_for_lexeme<Token::Ty::Stencil>();
     auto prereq_ext = std::string_view{""};
 
-    if (peek() != TokenType::LBrace) {
-      eat(TokenType::Arrow);
-      prereq_ext = eat_for_lexeme<TokenType::Stencil>();
+    if (peek() != Token::Ty::LBrace) {
+      eat(Token::Ty::Arrow);
+      prereq_ext = eat_for_lexeme<Token::Ty::Stencil>();
     }
 
     m_stencils.push_back(Stencil{.target_ext = target_ext,
@@ -422,15 +422,15 @@ private:
   }
 
   void fill() {
-    auto target = eat_for_lexeme<TokenType::Fill>();
+    auto target = eat_for_lexeme<Token::Ty::Fill>();
     auto prereq = std::string_view{""};
 
-    if (peek() != TokenType::SemiColon) {
-      eat(TokenType::Arrow);
-      prereq = eat_for_lexeme<TokenType::Fill>();
+    if (peek() != Token::Ty::SemiColon) {
+      eat(Token::Ty::Arrow);
+      prereq = eat_for_lexeme<Token::Ty::Fill>();
     }
 
-    eat(TokenType::SemiColon);
+    eat(Token::Ty::SemiColon);
     m_fills.push_back(Fill{target, prereq});
   }
 
@@ -440,12 +440,12 @@ public:
   }
 
   void stmt_list() {
-    if (peek() == TokenType::Stencil) {
+    if (peek() == Token::Ty::Stencil) {
       stencil();
       return;
     }
 
-    if (peek() == TokenType::Fill) {
+    if (peek() == Token::Ty::Fill) {
       fill();
       return;
     }
@@ -453,7 +453,7 @@ public:
     auto iden = iden_status();
     auto peeked = peek();
 
-    if (peeked == TokenType::Eq) {
+    if (peeked == Token::Ty::Eq) {
       if (std::holds_alternative<RValue>(iden)) {
         auto lhs = std::get<RValue>(iden).iden;
         auto rhs = assignment();
@@ -462,23 +462,23 @@ public:
         throw FabError(
             FabError::ExpectedLValue{.macro = std::get<LValue>(iden).iden});
       }
-    } else if (ParseState::matches(peeked, TokenType::Arrow,
-                                   TokenType::LBrace)) {
+    } else if (ParseState::matches(peeked, Token::Ty::Arrow,
+                                   Token::Ty::LBrace)) {
       auto [prereqs, actions] = rule();
       m_rules.push_back(
           {.target = iden, .prereqs = prereqs, .actions = actions});
     } else {
       throw FabError(
-          FabError::TokenNotInExpectedSet{.expected = {{TokenType::Eq},
-                                                       {TokenType::Arrow},
-                                                       {TokenType::LBrace}},
+          FabError::TokenNotInExpectedSet{.expected = {{Token::Ty::Eq},
+                                                       {Token::Ty::Arrow},
+                                                       {Token::Ty::LBrace}},
                                           .actual = peeked});
     }
   }
 
   bool eof() const {
     assert(m_offset != tokens.cend());
-    return m_offset->token_type() == TokenType::Eof;
+    return m_offset->ty() == Token::Ty::Eof;
   }
 
   Ir into_ir() && {
@@ -672,6 +672,11 @@ parse_state(Ir ir) {
 } // namespace resolve
 } // namespace detail
 
+Token::Token(Token::Ty ty, Option<std::string_view> lexeme)
+    : m_ty(ty)
+    , m_lexeme(lexeme) {
+}
+
 std::vector<Token>
 lex(std::string_view source) {
   detail::LexState state{source};
@@ -691,20 +696,20 @@ lex(std::string_view source) {
       break;
     case ':':
       state.eat('=');
-      tokens.push_back(Token::make<TokenType::Eq>());
+      tokens.push_back(Token::make<Token::Ty::Eq>());
       break;
     case ';':
-      tokens.push_back(Token::make<TokenType::SemiColon>());
+      tokens.push_back(Token::make<Token::Ty::SemiColon>());
       break;
     case '{':
-      tokens.push_back(Token::make<TokenType::LBrace>());
+      tokens.push_back(Token::make<Token::Ty::LBrace>());
       break;
     case '}':
-      tokens.push_back(Token::make<TokenType::RBrace>());
+      tokens.push_back(Token::make<Token::Ty::RBrace>());
       break;
     case '<':
       state.eat('-');
-      tokens.push_back(Token::make<TokenType::Arrow>());
+      tokens.push_back(Token::make<Token::Ty::Arrow>());
       break;
     case '[':
       if (state.peek() == '*') {
@@ -713,32 +718,32 @@ lex(std::string_view source) {
         auto [begin, end] = state.eat_until([](char c) { return c == ']'; });
         state.eat(']');
         tokens.push_back(
-            Token::make<TokenType::Stencil>(state.extract_lexeme(begin, end)));
+            Token::make<Token::Ty::Stencil>(state.extract_lexeme(begin, end)));
         break;
       } else {
         auto [begin, end] = state.eat_until([](char c) { return c == ']'; });
         state.eat(']');
         tokens.push_back(
-            Token::make<TokenType::Fill>(state.extract_lexeme(begin, end)));
+            Token::make<Token::Ty::Fill>(state.extract_lexeme(begin, end)));
         break;
       }
     case '$': {
       if (state.peek() == '@') {
         state.eat('@');
-        tokens.push_back(Token::make<TokenType::TargetAlias>());
+        tokens.push_back(Token::make<Token::Ty::TargetAlias>());
         break;
       }
 
       if (state.peek() == '<') {
         state.eat('<');
-        tokens.push_back(Token::make<TokenType::PrereqAlias>());
+        tokens.push_back(Token::make<Token::Ty::PrereqAlias>());
         break;
       }
 
       state.eat('(');
       auto [begin, end] = state.eat_until([](char c) { return c == ')'; });
       tokens.push_back(
-          Token::make<TokenType::Macro>(state.extract_lexeme(begin, end)));
+          Token::make<Token::Ty::Macro>(state.extract_lexeme(begin, end)));
       state.eat(')');
       break;
     }
@@ -746,14 +751,14 @@ lex(std::string_view source) {
       auto [begin, end] = state.eat_until(
           [](char c) { return c == ' ' || c == '\n' || c == ';'; });
 
-      tokens.push_back(Token::make<TokenType::Iden>(
+      tokens.push_back(Token::make<Token::Ty::Iden>(
           state.extract_lexeme(std::prev(begin), end)));
       break;
     }
     }
   }
 
-  tokens.push_back(Token::make<TokenType::Eof>());
+  tokens.push_back(Token::make<Token::Ty::Eof>());
   return tokens;
 }
 
@@ -765,6 +770,21 @@ parse(std::vector<Token> &&tokens) {
   }
 
   return detail::resolve::parse_state(std::move(state).into_ir());
+}
+
+bool
+operator<(const Rule &lhs, std::string_view rhs) {
+  return lhs.target < rhs;
+}
+
+bool
+operator<(std::string_view lhs, const Rule &rhs) {
+  return lhs < rhs.target;
+}
+
+bool
+operator<(const Rule &lhs, const Rule &rhs) {
+  return lhs.target < rhs.target;
 }
 
 bool
@@ -781,17 +801,17 @@ Environment::get(std::string_view target) const {
 
 std::ostream &
 operator<<(std::ostream &os, const Token &token) {
-  os << token.token_type();
+  os << token.ty();
 
-  switch (token.token_type()) {
-  case TokenType::Fill:
-    os << "['" << token.lexeme<TokenType::Fill>() << "']";
-  case TokenType::Iden:
-    os << "['" << token.lexeme<TokenType::Iden>() << "']";
-  case TokenType::Macro:
-    os << "['" << token.lexeme<TokenType::Macro>() << "']";
-  case TokenType::Stencil:
-    os << "['" << token.lexeme<TokenType::Stencil>() << "']";
+  switch (token.ty()) {
+  case Token::Ty::Fill:
+    os << "['" << token.lexeme<Token::Ty::Fill>() << "']";
+  case Token::Ty::Iden:
+    os << "['" << token.lexeme<Token::Ty::Iden>() << "']";
+  case Token::Ty::Macro:
+    os << "['" << token.lexeme<Token::Ty::Macro>() << "']";
+  case Token::Ty::Stencil:
+    os << "['" << token.lexeme<Token::Ty::Stencil>() << "']";
   default:
     break;
   }
@@ -800,31 +820,31 @@ operator<<(std::ostream &os, const Token &token) {
 }
 
 std::ostream &
-operator<<(std::ostream &os, const TokenType &ty) {
+operator<<(std::ostream &os, const Token::Ty &ty) {
   switch (ty) {
-  case TokenType::Arrow:
+  case Token::Ty::Arrow:
     return os << "ARROW";
-  case TokenType::Eof:
+  case Token::Ty::Eof:
     return os << "EOF";
-  case TokenType::Eq:
+  case Token::Ty::Eq:
     return os << "EQ";
-  case TokenType::Fill:
+  case Token::Ty::Fill:
     return os << "FILL";
-  case TokenType::Iden:
+  case Token::Ty::Iden:
     return os << "IDEN";
-  case TokenType::LBrace:
+  case Token::Ty::LBrace:
     return os << "LBRACE";
-  case TokenType::Macro:
+  case Token::Ty::Macro:
     return os << "MACRO";
-  case TokenType::PrereqAlias:
+  case Token::Ty::PrereqAlias:
     return os << "PREREQALIAS";
-  case TokenType::RBrace:
+  case Token::Ty::RBrace:
     return os << "RBRACE";
-  case TokenType::SemiColon:
+  case Token::Ty::SemiColon:
     return os << "SEMICOLON";
-  case TokenType::Stencil:
+  case Token::Ty::Stencil:
     return os << "STENCIL";
-  case TokenType::TargetAlias:
+  case Token::Ty::TargetAlias:
     return os << "TARGETALIAS";
   default:
     throw std::runtime_error{"unhandled token!"};

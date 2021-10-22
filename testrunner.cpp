@@ -7,8 +7,8 @@
 TEST(Lexer, ItRecognizesArrows) {
   auto actual = lex("<-");
 
-  auto expected = std::vector<Token>{Token::make<TokenType::Arrow>(),
-                                     Token::make<TokenType::Eof>()};
+  auto expected = std::vector<Token>{Token::make<Token::Ty::Arrow>(),
+                                     Token::make<Token::Ty::Eof>()};
   ASSERT_EQ(expected, actual);
 }
 
@@ -16,17 +16,17 @@ TEST(Lexer, ItRecognizesIdentifiers) {
   auto actual = lex("foo;");
 
   auto expected = std::vector<Token>{
-      Token::make<TokenType::Iden>(std::string_view{"foo"}),
-      Token::make<TokenType::SemiColon>(), Token::make<TokenType::Eof>()};
+      Token::make<Token::Ty::Iden>(std::string_view{"foo"}),
+      Token::make<Token::Ty::SemiColon>(), Token::make<Token::Ty::Eof>()};
   ASSERT_EQ(expected, actual);
 }
 
 TEST(Lexer, ItRecognizesBraces) {
   auto actual = lex("{}");
 
-  auto expected = std::vector<Token>{Token::make<TokenType::LBrace>(),
-                                     Token::make<TokenType::RBrace>(),
-                                     Token::make<TokenType::Eof>()};
+  auto expected = std::vector<Token>{Token::make<Token::Ty::LBrace>(),
+                                     Token::make<Token::Ty::RBrace>(),
+                                     Token::make<Token::Ty::Eof>()};
 
   ASSERT_EQ(expected, actual);
 }
@@ -35,10 +35,10 @@ TEST(Lexer, ItRecognizesAFullRule) {
   auto actual = lex("foo <- bar { baz; }");
 
   auto expected = std::vector<Token>{
-      Token::make<TokenType::Iden>("foo"), Token::make<TokenType::Arrow>(),
-      Token::make<TokenType::Iden>("bar"), Token::make<TokenType::LBrace>(),
-      Token::make<TokenType::Iden>("baz"), Token::make<TokenType::SemiColon>(),
-      Token::make<TokenType::RBrace>(),    Token::make<TokenType::Eof>()};
+      Token::make<Token::Ty::Iden>("foo"), Token::make<Token::Ty::Arrow>(),
+      Token::make<Token::Ty::Iden>("bar"), Token::make<Token::Ty::LBrace>(),
+      Token::make<Token::Ty::Iden>("baz"), Token::make<Token::Ty::SemiColon>(),
+      Token::make<Token::Ty::RBrace>(),    Token::make<Token::Ty::Eof>()};
 
   ASSERT_EQ(expected, actual);
 }
@@ -46,8 +46,8 @@ TEST(Lexer, ItRecognizesAFullRule) {
 TEST(Lexer, ItRecognizesMacros) {
   auto actual = lex("$(CC)");
 
-  auto expected = std::vector<Token>{Token::make<TokenType::Macro>("CC"),
-                                     Token::make<TokenType::Eof>()};
+  auto expected = std::vector<Token>{Token::make<Token::Ty::Macro>("CC"),
+                                     Token::make<Token::Ty::Eof>()};
   ASSERT_EQ(expected, actual);
 }
 
@@ -59,17 +59,17 @@ TEST(Lexer, ItRecognizesStencils) {
   auto actual = lex("[*.o] <- [*.c] { cc -o $@ $<; }");
 
   auto expected = std::vector<Token>{
-      Token::make<TokenType::Stencil>("o"),
-      Token::make<TokenType::Arrow>(),
-      Token::make<TokenType::Stencil>("c"),
-      Token::make<TokenType::LBrace>(),
-      Token::make<TokenType::Iden>("cc"),
-      Token::make<TokenType::Iden>("-o"),
-      Token::make<TokenType::TargetAlias>(),
-      Token::make<TokenType::PrereqAlias>(),
-      Token::make<TokenType::SemiColon>(),
-      Token::make<TokenType::RBrace>(),
-      Token::make<TokenType::Eof>(),
+      Token::make<Token::Ty::Stencil>("o"),
+      Token::make<Token::Ty::Arrow>(),
+      Token::make<Token::Ty::Stencil>("c"),
+      Token::make<Token::Ty::LBrace>(),
+      Token::make<Token::Ty::Iden>("cc"),
+      Token::make<Token::Ty::Iden>("-o"),
+      Token::make<Token::Ty::TargetAlias>(),
+      Token::make<Token::Ty::PrereqAlias>(),
+      Token::make<Token::Ty::SemiColon>(),
+      Token::make<Token::Ty::RBrace>(),
+      Token::make<Token::Ty::Eof>(),
   };
 
   ASSERT_EQ(expected, actual);
