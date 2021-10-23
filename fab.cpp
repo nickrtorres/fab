@@ -539,7 +539,7 @@ struct Resolver {
   }
 
   std::string_view operator()(const LValue &res) const {
-    auto pair = find_or_throw(macros, res.iden, [&res] {
+    const auto &pair = find_or_throw(macros, res.iden, [&res] {
       return FabError(FabError::UndefinedVariable{.var = res.iden});
     });
 

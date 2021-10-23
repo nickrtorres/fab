@@ -3,6 +3,7 @@
 
 CXX = /opt/gcc/GCC-11.2.0/bin/c++
 CXXFLAGS = -Wall -Werror -Wpedantic               \
+            -fsanitize=address                    \
            -I/opt/gcc/GCC-11.2.0/include          \
 	   -I/opt/include -std=c++20 -g
 
