@@ -54,9 +54,10 @@ concept Concat = requires(S s) {
 };
 
 template <typename R, typename D, typename Transform = std::identity>
-requires Concat<std::invoke_result_t<Transform, std::ranges::range_value_t<R>>>
-    std::string
-    foldl(R &&range, const D &delim, Transform transform = {})
+requires std::invocable<Transform, std::ranges::range_value_t<R>> &&
+    Concat<std::invoke_result_t<Transform, std::ranges::range_value_t<R>>>
+        std::string
+        foldl(R &&range, const D &delim, Transform transform = {})
 requires std::ranges::range<R> {
   std::string s = {};
 
