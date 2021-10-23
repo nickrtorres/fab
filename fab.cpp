@@ -168,6 +168,8 @@ using ValueType = std::variant<LValue, RValue, TargetAlias, PrereqAlias>;
 // resolved some point later on in parsing.
 using Association = std::tuple<std::string_view, std::vector<ValueType>>;
 
+using Binding = std::pair<std::string_view, std::string>;
+
 // Intermediate representation for Rules -- after parsing they'll need to be
 // resolved by looking each `ValueType` variant up in the environment.
 struct RuleIr {
@@ -572,47 +574,47 @@ struct ActionResolver {
 };
 
 namespace detail {
+Binding
+resolve_rvalue(const Association &association) {
+  const auto into_rvalue = [](const ValueType &v) {
+    return std::get<RValue>(v).iden;
+  };
+
+  const auto [iden, values] = association;
+  return std::make_pair(iden, foldl(values, " ", into_rvalue));
+}
+
+struct NonRValueResolver {
+  const std::map<std::string_view, std::string> &macros;
+
+  Binding operator()(const Association &association) const {
+    const auto resolver = Resolver{.macros = macros};
+    const auto [iden, values] = association;
+    return std::make_pair(iden, foldl(values, " ", [&](const ValueType &value) {
+                            return std::visit(resolver, value);
+                          }));
+  }
+};
+
 std::map<std::string_view, std::string>
 resolve_associations(const std::vector<Association> &associations) {
-  const auto base_resolver = [](const auto &association, auto &&transformer) {
-    auto [k, vs] = association;
-    return std::make_pair(k,
-                          foldl(vs | std::views::transform(transformer), " "));
-  };
-
   const auto is_rvalue = [](const Association &association) {
-    auto [k, vs] = association;
-    return std::ranges::all_of(
-        vs, [](const auto &v) { return std::holds_alternative<RValue>(v); });
+    auto [iden, values] = association;
+    return std::ranges::all_of(values, [](const auto &v) {
+      return std::holds_alternative<RValue>(v);
+    });
   };
+  auto macros = std::map<std::string_view, std::string>{};
+  auto rvalues = std::views::filter(associations, is_rvalue);
+  auto non_rvalues = std::views::filter(associations, std::not_fn(is_rvalue));
 
-  const auto resolve_as_rvalue = [base_resolver](const auto &association) {
-    const auto into_rvalue = [](const auto &v) {
-      return std::get<RValue>(v).iden;
-    };
-
-    return base_resolver(association, into_rvalue);
-  };
-
-  auto resolved = std::map<std::string_view, std::string>{};
+  std::ranges::move(std::views::transform(rvalues, resolve_rvalue),
+                    std::inserter(macros, macros.begin()));
   std::ranges::move(
-      std::views::transform(associations | std::views::filter(is_rvalue),
-                            resolve_as_rvalue),
-      std::inserter(resolved, resolved.begin()));
+      std::views::transform(non_rvalues, NonRValueResolver{.macros = macros}),
+      std::inserter(macros, macros.begin()));
 
-  const auto resolve_with_visitor = [&macros = std::as_const(resolved),
-                                     base_resolver](const auto &association) {
-    const auto visitc = make_visitc<ValueType>(Resolver{macros});
-    return base_resolver(association, visitc);
-  };
-
-  std::ranges::move(
-      std::views::transform(
-          std::views::filter(associations, std::not_fn(is_rvalue)),
-          resolve_with_visitor),
-      std::inserter(resolved, resolved.begin()));
-
-  return resolved;
+  return macros;
 }
 
 template <typename Range>
