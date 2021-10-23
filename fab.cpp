@@ -39,7 +39,7 @@ template <typename Container, typename T, typename MkExn>
 const auto &
 find_or_throw(const Container &haystack, const T &needle,
               MkExn &&mk) requires std::invocable<MkExn> {
-  auto it = haystack.find(needle);
+  const auto it = haystack.find(needle);
 
   if (it == std::end(haystack)) {
     throw mk();
@@ -204,16 +204,14 @@ struct RuleIr {
 
 struct Fill {
   static std::string_view get_extension(std::string_view s) {
-    auto offset = s.rfind(".");
+    const auto offset = s.rfind(".");
 
-    if (offset == std::string_view::npos) {
+    if (offset == std::string_view::npos || s.size() - 1 == offset) {
       throw FabError(
           FabError::UnexpectedFill{.expected = "<base>.<ext>", .actual = s});
     }
 
-    offset += 1;
-    assert(offset < s.size());
-    return s.substr(offset);
+    return s.substr(offset + 1);
   }
 
   const std::string_view target;
@@ -232,7 +230,7 @@ struct Fill {
 struct Stencil {
   const std::string_view target_ext;
   const std::string_view prereq_ext;
-  const std::vector<std::vector<ValueType>> action_list;
+  const std::vector<std::vector<ValueType>> actions;
 };
 
 bool
@@ -360,7 +358,7 @@ private:
   }
 
   ValueType iden_status() {
-    auto peeked = peek();
+    const auto peeked = peek();
 
     if (Token::Ty::Iden == peeked) {
       return RValue{eat_for_lexeme<Token::Ty::Iden>()};
@@ -435,7 +433,7 @@ private:
   }
 
   void stencil() {
-    auto target_ext = eat_for_lexeme<Token::Ty::Stencil>();
+    const auto target_ext = eat_for_lexeme<Token::Ty::Stencil>();
     auto prereq_ext = std::string_view{""};
 
     if (peek() != Token::Ty::LBrace) {
@@ -445,11 +443,11 @@ private:
 
     m_stencils.push_back(Stencil{.target_ext = target_ext,
                                  .prereq_ext = prereq_ext,
-                                 .action_list = std::move(action())});
+                                 .actions = std::move(action())});
   }
 
   void fill() {
-    auto target = eat_for_lexeme<Token::Ty::Fill>();
+    const auto target = eat_for_lexeme<Token::Ty::Fill>();
     auto prereq = std::string_view{""};
 
     if (peek() != Token::Ty::SemiColon) {
@@ -477,13 +475,13 @@ public:
       return;
     }
 
-    auto iden = iden_status();
-    auto peeked = peek();
+    const auto iden = iden_status();
+    const auto peeked = peek();
 
     if (peeked == Token::Ty::Eq) {
       if (std::holds_alternative<RValue>(iden)) {
-        auto lhs = std::get<RValue>(iden).iden;
-        auto rhs = assignment();
+        const auto lhs = std::get<RValue>(iden).iden;
+        const auto rhs = assignment();
         m_associations.emplace_back(lhs, rhs);
       } else {
         throw FabError(
@@ -491,7 +489,7 @@ public:
       }
     } else if (ParseState::matches(peeked, Token::Ty::Arrow,
                                    Token::Ty::LBrace)) {
-      auto [prereqs, actions] = rule();
+      const auto [prereqs, actions] = rule();
       m_rules.push_back(
           {.target = iden, .prereqs = prereqs, .actions = actions});
     } else {
@@ -510,7 +508,8 @@ public:
 
   Ir into_ir() && {
     for (const auto &fill : m_fills) {
-      auto matching = std::find(m_stencils.cbegin(), m_stencils.cend(), fill);
+      const auto matching =
+          std::find(m_stencils.cbegin(), m_stencils.cend(), fill);
 
       if (matching == m_stencils.end()) {
         throw std::runtime_error{"No matching stencil for fill."};
@@ -519,7 +518,7 @@ public:
             .target = detail::RValue{.iden = fill.target},
             .prereqs = std::vector<detail::ValueType>{detail::RValue{
                 .iden = fill.prereq}},
-            .actions = matching->action_list});
+            .actions = matching->actions});
       }
     }
 
@@ -735,13 +734,15 @@ lex(std::string_view source) {
       if (state.peek() == '*') {
         state.eat('*');
         state.eat('.');
-        auto [begin, end] = state.eat_until([](char c) { return c == ']'; });
+        const auto [begin, end] =
+            state.eat_until([](char c) { return c == ']'; });
         state.eat(']');
         tokens.push_back(
             Token::make<Token::Ty::Stencil>(state.extract_lexeme(begin, end)));
         break;
       } else {
-        auto [begin, end] = state.eat_until([](char c) { return c == ']'; });
+        const auto [begin, end] =
+            state.eat_until([](char c) { return c == ']'; });
         state.eat(']');
         tokens.push_back(
             Token::make<Token::Ty::Fill>(state.extract_lexeme(begin, end)));
@@ -761,14 +762,15 @@ lex(std::string_view source) {
       }
 
       state.eat('(');
-      auto [begin, end] = state.eat_until([](char c) { return c == ')'; });
+      const auto [begin, end] =
+          state.eat_until([](char c) { return c == ')'; });
       tokens.push_back(
           Token::make<Token::Ty::Macro>(state.extract_lexeme(begin, end)));
       state.eat(')');
       break;
     }
     default: {
-      auto [begin, end] = state.eat_until(
+      const auto [begin, end] = state.eat_until(
           [](char c) { return c == ' ' || c == '\n' || c == ';'; });
 
       tokens.push_back(Token::make<Token::Ty::Iden>(
@@ -873,7 +875,7 @@ operator<<(std::ostream &os, const Token::Ty &ty) {
 
 std::ostream &
 operator<<(std::ostream &os, const Environment &env) {
-  for (auto r : env.rules) {
+  for (const auto &r : env.rules) {
     os << r;
   }
 
@@ -887,7 +889,7 @@ operator<<(std::ostream &os, const Rule &r) {
 
   {
     bool first = true;
-    for (auto d : r.prereqs) {
+    for (const auto &d : r.prereqs) {
       if (!first) {
         os << ", ";
       }
@@ -902,7 +904,7 @@ operator<<(std::ostream &os, const Rule &r) {
 
   {
     bool first = true;
-    for (auto a : r.actions) {
+    for (const auto &a : r.actions) {
       if (!first) {
         os << ", ";
       }
