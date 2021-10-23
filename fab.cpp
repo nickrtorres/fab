@@ -38,9 +38,10 @@ concept Concat = requires(S s) {
   { std::string{} + s } -> std::same_as<std::string>;
 };
 
-template <typename R, typename D>
+template <typename R, typename D, typename Transform = std::identity>
 std::string
-foldl(R &&range, const D &delim) requires std::ranges::range<R> && Concat<D> {
+foldl(R &&range, const D &delim,
+      Transform transform = {}) requires std::ranges::range<R> {
   std::string s = {};
 
   bool first = true;
@@ -49,7 +50,7 @@ foldl(R &&range, const D &delim) requires std::ranges::range<R> && Concat<D> {
       s += delim;
     }
 
-    s += e;
+    s += std::invoke(transform, e);
     first = false;
   }
 
@@ -99,12 +100,11 @@ struct FabError final : std::runtime_error {
       auto ss = std::stringstream{};
       ss << "expected one of: {";
 
-      ss << foldl(u.expected | std::views::transform([](auto e) {
-                    std::stringstream ss = {};
-                    ss << e;
-                    return ss.str();
-                  }),
-                  ", ");
+      ss << foldl(u.expected, " ", [](const T &t) {
+        std::stringstream ss = {};
+        ss << t;
+        return ss.str();
+      });
 
       ss << "}; got: " << u.actual;
       return ss.str();
