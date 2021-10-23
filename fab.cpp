@@ -106,6 +106,11 @@ struct FabError final : std::runtime_error {
 
   struct NoRulesToRun {};
 
+  struct UndefinedGenericRule {
+    const std::string_view target;
+    const std::string_view prereq;
+  };
+
   struct GetErrMsg {
     template <typename T>
     std::string operator()(const Unexpected<T, T> &u) const {
@@ -152,13 +157,18 @@ struct FabError final : std::runtime_error {
     std::string operator()(const NoRulesToRun &) const {
       return "no rules to run.";
     }
+
+    std::string operator()(const UndefinedGenericRule &g) {
+      return "undefined generic rule: {target = " + sv_to_string(g.target) +
+             ", prereq = " + sv_to_string(g.prereq) + "}.";
+    }
   };
 
   using ErrTy =
       std::variant<BuiltInMacrosRequireActionScope, ExpectedLValue,
-                   NoRulesToRun, TokenNotInExpectedSet, UndefinedVariable,
-                   UnexpectedCharacter, UnexpectedEof, UnexpectedFill,
-                   UnexpectedTokenType, UnknownTarget>;
+                   NoRulesToRun, TokenNotInExpectedSet, UndefinedGenericRule,
+                   UndefinedVariable, UnexpectedCharacter, UnexpectedEof,
+                   UnexpectedFill, UnexpectedTokenType, UnknownTarget>;
 
   explicit FabError(const ErrTy &ty)
       : std::runtime_error(std::visit(GetErrMsg{}, ty)) {
@@ -227,14 +237,14 @@ struct Fill {
   }
 };
 
-struct Stencil {
+struct GenericRule {
   const std::string_view target_ext;
   const std::string_view prereq_ext;
   const std::vector<std::vector<ValueType>> actions;
 };
 
 bool
-operator==(const Stencil &lhs, const Fill &rhs) {
+operator==(const GenericRule &lhs, const Fill &rhs) {
   return std::tie(lhs.target_ext, lhs.prereq_ext) ==
          std::tie(rhs.target_ext, rhs.prereq_ext);
 }
@@ -310,7 +320,7 @@ class ParseState {
   std::vector<Association> m_associations = {};
   std::vector<Fill> m_fills = {};
   std::vector<RuleIr> m_rules = {};
-  std::vector<Stencil> m_stencils = {};
+  std::vector<GenericRule> m_generic_rules = {};
 
 private:
   const Token &eat(Token::Ty expected) {
@@ -432,18 +442,18 @@ private:
     return idens;
   }
 
-  void stencil() {
-    const auto target_ext = eat_for_lexeme<Token::Ty::Stencil>();
+  void generic_rule() {
+    const auto target_ext = eat_for_lexeme<Token::Ty::GenericRule>();
     auto prereq_ext = std::string_view{""};
 
     if (peek() != Token::Ty::LBrace) {
       eat(Token::Ty::Arrow);
-      prereq_ext = eat_for_lexeme<Token::Ty::Stencil>();
+      prereq_ext = eat_for_lexeme<Token::Ty::GenericRule>();
     }
 
-    m_stencils.push_back(Stencil{.target_ext = target_ext,
-                                 .prereq_ext = prereq_ext,
-                                 .actions = std::move(action())});
+    m_generic_rules.push_back(GenericRule{.target_ext = target_ext,
+                                          .prereq_ext = prereq_ext,
+                                          .actions = std::move(action())});
   }
 
   void fill() {
@@ -465,8 +475,8 @@ public:
   }
 
   void stmt_list() {
-    if (peek() == Token::Ty::Stencil) {
-      stencil();
+    if (peek() == Token::Ty::GenericRule) {
+      generic_rule();
       return;
     }
 
@@ -509,10 +519,11 @@ public:
   Ir into_ir() && {
     for (const auto &fill : m_fills) {
       const auto matching =
-          std::find(m_stencils.cbegin(), m_stencils.cend(), fill);
+          std::find(m_generic_rules.cbegin(), m_generic_rules.cend(), fill);
 
-      if (matching == m_stencils.end()) {
-        throw std::runtime_error{"No matching stencil for fill."};
+      if (matching == m_generic_rules.end()) {
+        throw FabError(FabError::UndefinedGenericRule{.target = fill.target,
+                                                      .prereq = fill.prereq});
       } else {
         m_rules.push_back(detail::RuleIr{
             .target = detail::RValue{.iden = fill.target},
@@ -737,8 +748,8 @@ lex(std::string_view source) {
         const auto [begin, end] =
             state.eat_until([](char c) { return c == ']'; });
         state.eat(']');
-        tokens.push_back(
-            Token::make<Token::Ty::Stencil>(state.extract_lexeme(begin, end)));
+        tokens.push_back(Token::make<Token::Ty::GenericRule>(
+            state.extract_lexeme(begin, end)));
         break;
       } else {
         const auto [begin, end] =
@@ -832,8 +843,8 @@ operator<<(std::ostream &os, const Token &token) {
     os << "['" << token.lexeme<Token::Ty::Iden>() << "']";
   case Token::Ty::Macro:
     os << "['" << token.lexeme<Token::Ty::Macro>() << "']";
-  case Token::Ty::Stencil:
-    os << "['" << token.lexeme<Token::Ty::Stencil>() << "']";
+  case Token::Ty::GenericRule:
+    os << "['" << token.lexeme<Token::Ty::GenericRule>() << "']";
   default:
     break;
   }
@@ -864,8 +875,8 @@ operator<<(std::ostream &os, const Token::Ty &ty) {
     return os << "RBRACE";
   case Token::Ty::SemiColon:
     return os << "SEMICOLON";
-  case Token::Ty::Stencil:
-    return os << "STENCIL";
+  case Token::Ty::GenericRule:
+    return os << "generic_rule";
   case Token::Ty::TargetAlias:
     return os << "TARGETALIAS";
   default:

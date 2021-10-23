@@ -72,10 +72,8 @@ lib.o <- lib.c {
 }
 ```
 
-Fab also allows generic rules -- similar to make's inference rules. A generic
-rule is created by providing a basic outline of the rule -- called a stencil --
-and then filling in that outline -- called a fill. The general syntax is
-demonstrated below.
+Fab also allows generic rules -- similar to make's inference rules.
+The general syntax is demonstrated below.
 ```
 CC := /opt/bin/gcc;
 

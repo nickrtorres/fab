@@ -25,7 +25,7 @@ public:
     Fill,
     Iden,
     Macro,
-    Stencil,
+    GenericRule,
   };
 
 private:
@@ -35,7 +35,7 @@ private:
   template <Token::Ty ty>
   constexpr static bool complex() {
     return Token::Ty::Fill == ty || Token::Ty::Iden == ty ||
-           Token::Ty::Macro == ty || Token::Ty::Stencil == ty;
+           Token::Ty::Macro == ty || Token::Ty::GenericRule == ty;
   }
 
   Token(Token::Ty, Option<std::string_view>);

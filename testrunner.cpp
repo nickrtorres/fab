@@ -55,13 +55,13 @@ TEST(Lexer, ItExpectsValidTokens) {
   ASSERT_THROW(lex("<="), std::runtime_error);
 }
 
-TEST(Lexer, ItRecognizesStencils) {
+TEST(Lexer, ItRecognizesGenericRules) {
   auto actual = lex("[*.o] <- [*.c] { cc -o $@ $<; }");
 
   auto expected = std::vector<Token>{
-      Token::make<Token::Ty::Stencil>("o"),
+      Token::make<Token::Ty::GenericRule>("o"),
       Token::make<Token::Ty::Arrow>(),
-      Token::make<Token::Ty::Stencil>("c"),
+      Token::make<Token::Ty::GenericRule>("c"),
       Token::make<Token::Ty::LBrace>(),
       Token::make<Token::Ty::Iden>("cc"),
       Token::make<Token::Ty::Iden>("-o"),
@@ -109,7 +109,7 @@ TEST(Parser, ItOnlyKnowsDefinedVariables) {
   ASSERT_THROW(parse(std::move(tokens)), std::runtime_error);
 }
 
-TEST(Parser, ItCanFillStencils) {
+TEST(Parser, ItCanFillGenericRules) {
   auto tokens = lex("[*.o] <- [*.c] { cc -c $<; } [main.o] <- [main.c]; main "
                     "<- main.o { cc -o $@ $<; }");
   auto actual = parse(std::move(tokens)).rules;
