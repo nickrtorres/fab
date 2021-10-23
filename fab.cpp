@@ -324,6 +324,7 @@ class ParseState {
 
 private:
   const Token &eat(Token::Ty expected) {
+    assert(m_offset != tokens.end());
     const auto &actual = *m_offset;
 
     if (expected != actual.ty()) {
@@ -880,7 +881,7 @@ operator<<(std::ostream &os, const Token::Ty &ty) {
   case Token::Ty::TargetAlias:
     return os << "TARGETALIAS";
   default:
-    throw std::runtime_error{"unhandled token!"};
+    __builtin_unreachable();
   }
 }
 

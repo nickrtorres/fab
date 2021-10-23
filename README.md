@@ -97,6 +97,9 @@ main <- main.o lib.o {
 - [x] support default rule
 - [x] allow multiple actions in a single action block
 - [x] allow inference rules
+- [ ] more negative path tests
+- [ ] fix-up style consistency
+- [ ] add grammar.txt
 
 
 [concepts]: https://en.cppreference.com/w/cpp/language/constraints
