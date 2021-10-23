@@ -2,14 +2,11 @@
 [`make(1)`][make].  It is implemented in C++20 and (where possible):
   - exposes a minimal interface to users (really just `lex`, `parse`, and a few
    types)
-  - `const`s everything^
+  - uses immutable values and references
   - avoids allocation (ie. `string_view` instead of `std::string`)
   - uses [ranges]
   - constrains generics with [concepts]
   - uses stdlib algorithms instead of manual iteration
-
-^`const`s everything by default, unless it would prevent a move, in that case
-`const` is implied with `/* const */`.
 
 Much like `make(1)`, `fab` supplies three main constructs: targets,
 prerequisites, and actions -- a _rule_ is a combination these constructs.

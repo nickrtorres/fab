@@ -522,17 +522,6 @@ public:
 };
 
 namespace resolve {
-template <typename Visitor, typename Variant>
-concept Visit = requires(Visitor visitor, Variant variant) {
-  std::visit(visitor, variant);
-};
-
-template <typename Variant>
-constexpr auto
-make_visitc(auto visitor) requires Visit<decltype(visitor), Variant> {
-  return [=](const Variant &variant) { return std::visit(visitor, variant); };
-}
-
 // Fab's grammar supplies two main scopes: action and _everything else_.  The
 // only really special thing about action scope is visibility of _special_
 // macros -- namely make(1) style '$@' and '$<' to refer to the current target
@@ -613,15 +602,16 @@ struct NonRValueResolver {
 std::map<std::string_view, std::string>
 resolve_associations(const std::vector<Association> &associations) {
   const auto is_rvalue = [](const Association &association) {
-    auto [iden, values] = association;
+    const auto [iden, values] = association;
     return std::ranges::all_of(values, [](const auto &v) {
       return std::holds_alternative<RValue>(v);
     });
   };
-  auto macros = std::map<std::string_view, std::string>{};
+
   auto rvalues = std::views::filter(associations, is_rvalue);
   auto non_rvalues = std::views::filter(associations, std::not_fn(is_rvalue));
 
+  auto macros = std::map<std::string_view, std::string>{};
   std::ranges::move(std::views::transform(rvalues, resolve_rvalue),
                     std::inserter(macros, macros.begin()));
   std::ranges::move(
@@ -631,35 +621,39 @@ resolve_associations(const std::vector<Association> &associations) {
   return macros;
 }
 
-template <typename Range>
-requires std::same_as<RuleIr, std::ranges::range_value_t<Range>>
-    std::vector<Rule>
-    resolve_irs(const std::map<std::string_view, std::string> &macros,
-                Range irs) {
+Rule
+resolve_rule(const std::map<std::string_view, std::string> &macros,
+             const RuleIr &rule) {
+  const auto resolver = Resolver{.macros = macros};
+  const auto target = std::visit(resolver, rule.target);
+  auto prereqs =
+      copy_collect(std::views::transform(rule.prereqs, [&](const ValueType &v) {
+        return std::visit(resolver, v);
+      }));
 
-  const auto resolve_ir = [macros](const auto &ir) {
-    const auto visitc = make_visitc<ValueType>(Resolver{macros});
-    const auto target = visitc(ir.target);
-
-    /* const */ auto prereqs =
-        copy_collect(std::views::transform(ir.prereqs, visitc));
-    const auto resolve_action_list =
-        [&](const std::vector<ValueType> &action_list) {
-          const auto action_visitc = make_visitc<ValueType>(ActionResolver{
-              .target = target, .prereqs = prereqs, .macros = macros});
-
-          return foldl(std::views::transform(action_list, action_visitc), " ");
-        };
-
-    /* const */ auto actions =
-        copy_collect(std::views::transform(ir.actions, resolve_action_list));
-
-    return Rule{.target = target,
-                .prereqs = std::move(prereqs),
-                .actions = std::move(actions)};
+  const auto resolve_action = [&](const ValueType &v) {
+    const auto resolver =
+        ActionResolver{.target = target, .prereqs = prereqs, .macros = macros};
+    return std::visit(resolver, v);
   };
 
-  return copy_collect(std::views::transform(irs, resolve_ir));
+  // FIXME: should be a move inserter
+  auto actions =
+      copy_collect(std::views::transform(rule.actions, [&](const auto &action) {
+        return foldl(action, " ", resolve_action);
+      }));
+
+  return Rule{.target = target,
+              .prereqs = std::move(prereqs),
+              .actions = std::move(actions)};
+}
+
+std::vector<Rule>
+resolve_rules(const std::map<std::string_view, std::string> &macros,
+              const std::vector<RuleIr> &rule_irs) {
+  return copy_collect(std::views::transform(rule_irs, [&](const RuleIr &rule) {
+    return resolve_rule(macros, rule);
+  }));
 }
 
 template <typename T>
@@ -675,8 +669,8 @@ into_set(std::vector<T> vs) requires std::move_constructible<T> {
 
 Environment
 parse_state(Ir ir) {
-  /* const */ auto macros = detail::resolve_associations(ir.associations);
-  /* const */ auto rules = detail::resolve_irs(macros, ir.rules);
+  auto macros = detail::resolve_associations(ir.associations);
+  auto rules = detail::resolve_rules(macros, ir.rules);
 
   // we want to crash if rules is empty
   // FIXME: make this a FabException exception
