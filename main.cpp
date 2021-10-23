@@ -84,13 +84,6 @@ eval(const Rule &rule) {
 template <typename T>
 using Ref = std::reference_wrapper<T>;
 
-template <typename T>
-struct IsConstLValueReference {
-  static const bool value =
-      std::is_lvalue_reference<T>::value &&
-      std::is_const<typename std::remove_reference<T>::type>::value;
-};
-
 //   cases
 //   ------------------------------------------
 //   (1) current node is a leaf
@@ -104,12 +97,8 @@ void
 eval_rule(const Environment &env, const Rule &rule) {
   auto stack = std::stack<Ref<const Rule>>{};
   auto visited = std::set<std::string_view>{};
-  const auto utd = [&v = std::as_const(visited),
-                    &e = std::as_const(env)](auto d) {
-    static_assert(IsConstLValueReference<decltype(v)>::value);
-    static_assert(IsConstLValueReference<decltype(e)>::value);
-    return v.contains(d) || e.is_leaf(d);
-  };
+  const auto utd = [&v = std::as_const(visited), &e = std::as_const(env)](
+                       auto d) { return v.contains(d) || e.is_leaf(d); };
   const auto not_utd = std::not_fn(utd);
 
   stack.push(rule);
