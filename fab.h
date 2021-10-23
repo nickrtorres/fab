@@ -99,42 +99,6 @@ struct Environment {
 };
 
 std::vector<Token> lex(std::string_view source);
-
-// Fab's grammar allows two main non-terminals: assignment and rule statements.
-// Parsing produces an environment that maps the schema specified by a fabfile
-// into proper C++ types.
-//
-// clang-format off
-// <Fabfile>       ::= <stmt_list>
-// <stmt_list>     ::= <stmt> <stmt_list>
-// <stmt_list>     ::= <stmt>
-// <stmt>          ::= <assignment>
-// <stmt>          ::= <rule>
-// <stmt>          ::= <stencil>
-// <stmt>          ::= <fill>
-// <stencil>       ::= STENCIL EXTENSION <- STENCIL EXTENSION LBRACE <action_list> RBRACE
-// <stencil>       ::= STENCIL EXTENSION LBRACE <action_list> RBRACE
-// <fill>          ::= FILL <- FILL SEMICOLON
-// <fill>          ::= FILL SEMICOLON
-// <assignment>    ::= <iden> := <iden_list>
-// <rule>          ::= <target> <- <iden_list> SEMICOLON
-// <rule>          ::= <target> <- <iden_list> LBRACE <action> RBRACE
-// <rule>          ::= <target> LBRACE <action_list> RBRACE
-// <target>        ::= iden
-// <dep>           ::= iden
-// <alias>         ::= $@
-// <alias>         ::= $<
-// <action_list>   ::= <alias> <action_list>
-// <action_list>   ::= IDEN <action_list>
-// <action_list>   ::= MACRO <action_list>
-// <action_list>   ::= <alias> SEMICOLON
-// <action_list>   ::= IDEN SEMICOLON
-// <action_list>   ::= MACRO SEMICOLON
-// <iden_list>     ::= IDEN SEMICOLON
-// <iden_list>     ::= MACRO SEMICOLON
-// <iden_list>     ::= IDEN <iden_list>
-// <iden_list>     ::= MACRO <iden_list>
-// clang-format on
 Environment parse(std::vector<Token> &&tokens);
 
 template <typename T>
