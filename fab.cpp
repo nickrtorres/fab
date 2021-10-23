@@ -15,6 +15,21 @@
 #include "fab.h"
 
 namespace {
+template <typename T>
+constexpr bool
+same_as_v() {
+  return false;
+}
+
+template <typename T, typename Head, typename... Tail>
+constexpr bool
+same_as_v() {
+  return std::is_same<T, Head>::value || same_as_v<T, Tail...>();
+}
+
+template <typename T, typename Head, typename... Tail>
+concept SameAs = same_as_v<T, Head, Tail...>();
+
 std::string
 sv_to_string(std::string_view sv) {
   return std::string{sv.cbegin(), sv.cend()};
@@ -527,12 +542,10 @@ make_visitc(auto visitor) requires Visit<decltype(visitor), Variant> {
 // PrereqAlias. Resolver operator() overloads constrain their parameters with
 // these two concepts to disallow invalid Fab programs.
 template <typename T>
-concept ActionScope =
-    std::is_same<TargetAlias, T>::value || std::is_same<PrereqAlias, T>::value;
+concept ActionScope = SameAs<T, TargetAlias, PrereqAlias>;
 
 template <typename T>
-concept FileScope =
-    std::is_same<RValue, T>::value || std::is_same<LValue, T>::value;
+concept FileScope = SameAs<T, RValue, LValue>;
 
 struct Resolver {
   const std::map<std::string_view, std::string> &macros;
