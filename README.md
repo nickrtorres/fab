@@ -32,7 +32,6 @@ Running `fab` on this file is as simple as
 
 ```
 % fab
-
 ```
 
 Like `make(1)`, `fab` lets you assign values to identifiers. These assignments
