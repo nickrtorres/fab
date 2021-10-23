@@ -684,9 +684,10 @@ parse_state(Ir ir) {
     throw FabError(FabError::NoRulesToRun{});
   }
 
+  const std::string_view head = rules.front().target;
   return Environment{.macros = std::move(macros),
                      .rules = detail::into_set(std::move(rules)),
-                     .head = rules.front().target};
+                     .head = head};
 }
 } // namespace resolve
 } // namespace detail
