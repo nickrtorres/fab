@@ -35,13 +35,14 @@ find_or_throw(const Container &haystack, const T &needle,
 
 template <typename S>
 concept Concat = requires(S s) {
-  { std::string{} + s } -> std::same_as<std::string>;
+  {std::string{}.append(s)};
 };
 
 template <typename R, typename D, typename Transform = std::identity>
-std::string
-foldl(R &&range, const D &delim,
-      Transform transform = {}) requires std::ranges::range<R> {
+requires Concat<std::invoke_result_t<Transform, std::ranges::range_value_t<R>>>
+    std::string
+    foldl(R &&range, const D &delim, Transform transform = {})
+requires std::ranges::range<R> {
   std::string s = {};
 
   bool first = true;
