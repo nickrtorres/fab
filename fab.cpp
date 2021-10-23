@@ -86,6 +86,7 @@ struct FabError final : std::runtime_error {
   using UnexpectedTokenType = Unexpected<Token::Ty, Token::Ty>;
   using TokenNotInExpectedSet =
       Unexpected<std::vector<Option<Token::Ty>>, Option<Token::Ty>>;
+  using UnexpectedFill = Unexpected<std::string_view, std::string_view>;
 
   struct UndefinedVariable {
     const std::string_view var;
@@ -102,6 +103,8 @@ struct FabError final : std::runtime_error {
   struct UnexpectedEof {};
 
   struct BuiltInMacrosRequireActionScope {};
+
+  struct NoRulesToRun {};
 
   struct GetErrMsg {
     template <typename T>
@@ -145,12 +148,17 @@ struct FabError final : std::runtime_error {
     std::string operator()(const BuiltInMacrosRequireActionScope &) const {
       return "built in macros are only valid in action blocks.";
     }
+
+    std::string operator()(const NoRulesToRun &) const {
+      return "no rules to run.";
+    }
   };
 
-  using ErrTy = std::variant<BuiltInMacrosRequireActionScope, ExpectedLValue,
-                             TokenNotInExpectedSet, UndefinedVariable,
-                             UnexpectedCharacter, UnexpectedEof,
-                             UnexpectedTokenType, UnknownTarget>;
+  using ErrTy =
+      std::variant<BuiltInMacrosRequireActionScope, ExpectedLValue,
+                   NoRulesToRun, TokenNotInExpectedSet, UndefinedVariable,
+                   UnexpectedCharacter, UnexpectedEof, UnexpectedFill,
+                   UnexpectedTokenType, UnknownTarget>;
 
   explicit FabError(const ErrTy &ty)
       : std::runtime_error(std::visit(GetErrMsg{}, ty)) {
@@ -159,9 +167,9 @@ struct FabError final : std::runtime_error {
 
 template <typename R>
 auto
-copy_collect(R &&range) requires std::ranges::range<R> {
+move_collect(R &&range) requires std::ranges::range<R> {
   std::vector<std::ranges::range_value_t<R>> out = {};
-  std::ranges::copy(range, std::back_inserter(out));
+  std::ranges::move(range, std::back_inserter(out));
   return out;
 }
 
@@ -199,7 +207,8 @@ struct Fill {
     auto offset = s.rfind(".");
 
     if (offset == std::string_view::npos) {
-      throw 0; // FIXME: FabError(FabError::InvalidFill{.fill = s});
+      throw FabError(
+          FabError::UnexpectedFill{.expected = "<base>.<ext>", .actual = s});
     }
 
     offset += 1;
@@ -627,7 +636,7 @@ resolve_rule(const std::map<std::string_view, std::string> &macros,
   const auto resolver = Resolver{.macros = macros};
   const auto target = std::visit(resolver, rule.target);
   auto prereqs =
-      copy_collect(std::views::transform(rule.prereqs, [&](const ValueType &v) {
+      move_collect(std::views::transform(rule.prereqs, [&](const ValueType &v) {
         return std::visit(resolver, v);
       }));
 
@@ -637,9 +646,8 @@ resolve_rule(const std::map<std::string_view, std::string> &macros,
     return std::visit(resolver, v);
   };
 
-  // FIXME: should be a move inserter
   auto actions =
-      copy_collect(std::views::transform(rule.actions, [&](const auto &action) {
+      move_collect(std::views::transform(rule.actions, [&](const auto &action) {
         return foldl(action, " ", resolve_action);
       }));
 
@@ -651,7 +659,7 @@ resolve_rule(const std::map<std::string_view, std::string> &macros,
 std::vector<Rule>
 resolve_rules(const std::map<std::string_view, std::string> &macros,
               const std::vector<RuleIr> &rule_irs) {
-  return copy_collect(std::views::transform(rule_irs, [&](const RuleIr &rule) {
+  return move_collect(std::views::transform(rule_irs, [&](const RuleIr &rule) {
     return resolve_rule(macros, rule);
   }));
 }
@@ -672,12 +680,13 @@ parse_state(Ir ir) {
   auto macros = detail::resolve_associations(ir.associations);
   auto rules = detail::resolve_rules(macros, ir.rules);
 
-  // we want to crash if rules is empty
-  // FIXME: make this a FabException exception
-  const std::string_view head = rules.at(0).target;
+  if (rules.empty()) {
+    throw FabError(FabError::NoRulesToRun{});
+  }
+
   return Environment{.macros = std::move(macros),
                      .rules = detail::into_set(std::move(rules)),
-                     .head = head};
+                     .head = rules.front().target};
 }
 } // namespace resolve
 } // namespace detail
