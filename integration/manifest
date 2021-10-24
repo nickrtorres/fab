@@ -15,4 +15,5 @@ undefined_generic_rule,stderr
 undefined_variable,stderr
 unexpected_character,stderr
 unexpected_eof,stderr
+unexpected_fill,stderr
 unexpected_token_type,stderr
