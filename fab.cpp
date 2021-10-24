@@ -31,13 +31,13 @@ template <typename T, typename Head, typename... Tail>
 concept SameAs = same_as_v<T, Head, Tail...>();
 
 template <typename T>
-[[nodiscard]] static bool
+[[nodiscard]] bool
 matches(T) {
   return false;
 }
 
 template <typename Hd, typename... Tl>
-[[nodiscard]] static bool
+[[nodiscard]] bool
 matches(Hd candidate, Hd head, Tl... tail) {
   return candidate == head || matches(candidate, tail...);
 }
