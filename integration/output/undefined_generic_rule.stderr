@@ -1,0 +1,1 @@
+../fab: error: undefined generic rule: {target = foo.o, prereq = foo.cpp}.

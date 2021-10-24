@@ -1,0 +1,14 @@
+advent,stdout
+chain_dependency,stdout
+dag,stdout
+default_rule,stdout
+macro_reference_macro,stdout
+macros,stdout
+multiple_actions_in_action_block,stdout
+no_rules_to_run,stderr
+stencil,stdout
+target_alias,stdout
+token_not_in_expected_set,stderr
+undefined_generic_rule,stderr
+undefined_variable,stderr
+unexpected_character,stderr

@@ -10,26 +10,22 @@ def report(name, status):
 
 
 class Manifest:
-    def __init__(self, mft_name):
-        with open(f'manifests/{mft_name}.mft') as mft:
-            self.name = mft_name
-            self.target, self.stream = mft.readlines()[0].rstrip().split(',')
-
-        with open(f'output/{mft_name}.{self.stream}') as exp:
+    def __init__(self, name, fd):
+        self.fd = fd
+        self.name = name
+        with open(f'output/{name}.{fd}') as exp:
             self.expected = ''.join(exp.readlines()).rstrip()
 
     def is_stderr(self):
-        return 'stderr' == self.stream
+        return 'stderr' == self.fd
 
     def is_stdout(self):
-        assert not self.is_stderr()
-        return 'stdout' == self.stream
+        return 'stdout' == self.fd
 
 
 def run(mft):
-    handle = subprocess.run(
-        f'../fab -f fabfiles/{mft.name}.fab {mft.target}'.split(),
-        capture_output=True)
+    handle = subprocess.run(f'../fab -f fabfiles/{mft.name}.fab'.split(),
+                            capture_output=True)
 
     if mft.is_stdout():
         return handle.stdout.decode().rstrip()
@@ -38,23 +34,24 @@ def run(mft):
         return handle.stderr.decode().rstrip()
 
 
-def check(name):
-    mft = Manifest(name)
+def check(name, fd):
+    mft = Manifest(name, fd)
     actual = run(mft)
 
     if actual == mft.expected:
         report(name, 'ok')
+        return 1
     else:
         report(name, 'fail')
+        return 0
 
 
 if __name__ == '__main__':
-    check('advent')
-    check('chain_dependency')
-    check('dag')
-    check('default_rule')
-    check('macro_reference_macro')
-    check('macros')
-    check('multiple_actions_in_action_block')
-    check('stencil')
-    check('target_alias')
+    with open('manifest') as mft:
+        total = 0
+        passed = 0
+        for line in mft.readlines():
+            total += 1
+            passed += check(*line.rstrip().split(','))
+
+        print(f'\n{passed}/{total} tests passed.')

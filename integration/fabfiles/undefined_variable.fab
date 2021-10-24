@@ -1,0 +1,4 @@
+# ../fab: error: undefined variable: CC
+foo.o <- foo.c {
+  $(CC) $<;
+}

@@ -1,0 +1,6 @@
+[*.o] <- [*.c] {
+  cc -c $<;
+}
+
+# ../fab: error: undefined generic rule: {target = foo.o, prereq = foo.cpp}.
+[foo.o] <- [foo.cpp];

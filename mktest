@@ -1,0 +1,22 @@
+#!/bin/bash
+
+set -u
+
+if [ $# != 2 ]; then
+  echo "$0: usuage: $0 <Fabfile>.fab <stdout,stderr>"
+  exit 1
+fi
+
+FABFILE="$1"
+FD="$2"
+
+mv "${FABFILE}" "integration/fabfiles/"
+cd integration || exit 1
+
+if [ "${FD}" = "stdout" ]; then
+  ../fab -f "fabfiles/${1}" > "output/${FABFILE/.fab/.stdout}"
+else
+  ../fab -f "fabfiles/${1}" 2> "output/${FABFILE/.fab/.stderr}"
+fi
+
+echo "${FABFILE/.fab/},${FD}" >> manifest || exit 1
