@@ -33,7 +33,7 @@ private:
   const Option<std::string_view> m_lexeme;
 
   template <Token::Ty ty>
-  constexpr static bool complex() {
+  [[nodiscard]] constexpr static bool complex() {
     return Token::Ty::Fill == ty || Token::Ty::Iden == ty ||
            Token::Ty::Macro == ty || Token::Ty::GenericRule == ty;
   }
@@ -55,14 +55,14 @@ public:
   }
 
   template <Token::Ty ty>
-  std::string_view lexeme() const {
+  [[nodiscard]] std::string_view lexeme() const {
     static_assert(Token::complex<ty>(), "Only complex tokens have lexemes.");
 
     assert(m_lexeme.has_value());
     return m_lexeme.value();
   }
 
-  inline Token::Ty ty() const {
+  [[nodiscard]] inline Token::Ty ty() const {
     return m_ty;
   }
 
@@ -76,7 +76,7 @@ struct Rule {
 
   bool operator==(const Rule &) const = default;
 
-  inline bool is_phony() const {
+  [[nodiscard]] inline bool is_phony() const {
     return actions.empty();
   }
 };

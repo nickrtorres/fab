@@ -16,13 +16,13 @@
 
 namespace {
 template <typename T>
-constexpr bool
+[[nodiscard]] constexpr bool
 same_as_v() {
   return false;
 }
 
 template <typename T, typename Head, typename... Tail>
-constexpr bool
+[[nodiscard]] constexpr bool
 same_as_v() {
   return std::is_same<T, Head>::value || same_as_v<T, Tail...>();
 }
@@ -30,13 +30,13 @@ same_as_v() {
 template <typename T, typename Head, typename... Tail>
 concept SameAs = same_as_v<T, Head, Tail...>();
 
-std::string
+[[nodiscard]] std::string
 sv_to_string(std::string_view sv) {
   return std::string{sv.cbegin(), sv.cend()};
 }
 
 template <typename Container, typename T, typename MkExn>
-const auto &
+[[nodiscard]] const auto &
 find_or_throw(const Container &haystack, const T &needle,
               MkExn &&mk) requires std::invocable<MkExn> {
   const auto it = haystack.find(needle);
@@ -57,8 +57,8 @@ template <typename R, typename D, typename Transform = std::identity>
 requires std::ranges::range<R> &&
     std::invocable<Transform, std::ranges::range_value_t<R>> &&
     Concat<std::invoke_result_t<Transform, std::ranges::range_value_t<R>>>
-        std::string
-        foldl(R &&range, const D &delim, Transform transform = {}) {
+[[nodiscard]] std::string
+foldl(R &&range, const D &delim, Transform transform = {}) {
   std::string s = {};
 
   bool first = true;
@@ -76,9 +76,9 @@ requires std::ranges::range<R> &&
 } // namespace
 
 namespace detail {
-struct FabError final : std::runtime_error {
+struct [[nodiscard]] FabError final : std::runtime_error {
   template <typename T, typename U>
-  struct Unexpected {
+  struct [[nodiscard]] Unexpected {
     const T expected;
     const U actual;
   };
@@ -89,39 +89,40 @@ struct FabError final : std::runtime_error {
       Unexpected<std::vector<Option<Token::Ty>>, Option<Token::Ty>>;
   using UnexpectedFill = Unexpected<std::string_view, std::string_view>;
 
-  struct UndefinedVariable {
+  struct [[nodiscard]] UndefinedVariable {
     const std::string_view var;
   };
 
-  struct UnknownTarget {
+  struct [[nodiscard]] UnknownTarget {
     const std::string_view target;
   };
 
-  struct ExpectedLValue {
+  struct [[nodiscard]] ExpectedLValue {
     const std::string_view macro;
   };
 
-  struct UnexpectedEof {};
+  struct [[nodiscard]] UnexpectedEof {};
 
-  struct BuiltInMacrosRequireActionScope {};
+  struct [[nodiscard]] BuiltInMacrosRequireActionScope {};
 
-  struct NoRulesToRun {};
+  struct [[nodiscard]] NoRulesToRun {};
 
-  struct UndefinedGenericRule {
+  struct [[nodiscard]] UndefinedGenericRule {
     const std::string_view target;
     const std::string_view prereq;
   };
 
-  struct GetErrMsg {
+  struct [[nodiscard]] GetErrMsg {
     template <typename T>
-    std::string operator()(const Unexpected<T, T> &u) const {
+    [[nodiscard]] std::string operator()(const Unexpected<T, T> &u) const {
       auto ss = std::stringstream{};
       ss << "expected: " << u.expected << "; got: " << u.actual;
       return ss.str();
     }
 
     template <typename T>
-    std::string operator()(const Unexpected<std::vector<T>, T> &u) const {
+    [[nodiscard]] std::string
+    operator()(const Unexpected<std::vector<T>, T> &u) const {
       auto ss = std::stringstream{};
       ss << "expected one of: {";
 
@@ -135,11 +136,11 @@ struct FabError final : std::runtime_error {
       return ss.str();
     }
 
-    std::string operator()(const UndefinedVariable &uv) const {
+    [[nodiscard]] std::string operator()(const UndefinedVariable &uv) const {
       return "undefined variable: " + sv_to_string(uv.var);
     }
 
-    std::string operator()(const UnknownTarget &ut) const {
+    [[nodiscard]] std::string operator()(const UnknownTarget &ut) const {
       return "no rule to make target `" + sv_to_string(ut.target) + "'";
     }
 
@@ -147,11 +148,12 @@ struct FabError final : std::runtime_error {
       return "expected lvalue but got macro at: " + sv_to_string(e.macro);
     }
 
-    std::string operator()(const UnexpectedEof &) const {
+    [[nodiscard]] std::string operator()(const UnexpectedEof &) const {
       return "unexpected <EOF>";
     }
 
-    std::string operator()(const BuiltInMacrosRequireActionScope &) const {
+    [[nodiscard]] std::string
+    operator()(const BuiltInMacrosRequireActionScope &) const {
       return "built in macros are only valid in action blocks.";
     }
 
@@ -159,7 +161,7 @@ struct FabError final : std::runtime_error {
       return "no rules to run.";
     }
 
-    std::string operator()(const UndefinedGenericRule &g) {
+    [[nodiscard]] std::string operator()(const UndefinedGenericRule &g) {
       return "undefined generic rule: {target = " + sv_to_string(g.target) +
              ", prereq = " + sv_to_string(g.prereq) + "}.";
     }
@@ -177,24 +179,24 @@ struct FabError final : std::runtime_error {
 };
 
 template <typename R>
-auto
+[[nodiscard]] auto
 move_collect(R &&range) requires std::ranges::range<R> {
   std::vector<std::ranges::range_value_t<R>> out = {};
   std::ranges::move(range, std::back_inserter(out));
   return out;
 }
 
-struct LValue {
+struct [[nodiscard]] LValue {
   const std::string_view iden;
 };
 
-struct RValue {
+struct [[nodiscard]] RValue {
   const std::string_view iden;
 };
 
-struct TargetAlias {};
+struct [[nodiscard]] TargetAlias {};
 
-struct PrereqAlias {};
+struct [[nodiscard]] PrereqAlias {};
 
 using ValueType = std::variant<LValue, RValue, TargetAlias, PrereqAlias>;
 
@@ -207,14 +209,14 @@ using Binding = std::pair<std::string_view, std::string>;
 
 // Intermediate representation for Rules -- after parsing they'll need to be
 // resolved by looking each `ValueType` variant up in the environment.
-struct RuleIr {
+struct [[nodiscard]] RuleIr {
   const ValueType target;
   const std::vector<ValueType> prereqs;
   const std::vector<std::vector<ValueType>> actions;
 };
 
-struct Fill {
-  static std::string_view get_extension(std::string_view s) {
+struct [[nodiscard]] Fill {
+  [[nodiscard]] static std::string_view get_extension(std::string_view s) {
     const auto offset = s.rfind(".");
 
     if (offset == std::string_view::npos || s.size() - 1 == offset) {
@@ -238,7 +240,7 @@ struct Fill {
   }
 };
 
-struct GenericRule {
+struct [[nodiscard]] GenericRule {
   const std::string_view target_ext;
   const std::string_view prereq_ext;
   const std::vector<std::vector<ValueType>> actions;
@@ -250,12 +252,12 @@ operator==(const GenericRule &lhs, const Fill &rhs) {
          std::tie(rhs.target_ext, rhs.prereq_ext);
 }
 
-struct Ir {
+struct [[nodiscard]] Ir {
   const std::vector<RuleIr> rules;
   const std::vector<Association> associations;
 };
 
-class LexState {
+class [[nodiscard]] LexState {
   const std::string_view buf;
   std::string_view::const_iterator m_offset = buf.cbegin();
 
@@ -274,7 +276,7 @@ public:
     return c;
   }
 
-  bool eof() const {
+  [[nodiscard]] bool eof() const {
     return m_offset == buf.cend();
   }
 
@@ -287,7 +289,7 @@ public:
     assert(next() == expected);
   }
 
-  Option<char> peek() const {
+  [[nodiscard]] Option<char> peek() const {
     if (eof()) {
       return {};
     }
@@ -296,13 +298,13 @@ public:
   }
 
   template <typename I>
-  std::string_view extract_lexeme(I begin,
-                                  I end) requires std::input_iterator<I> {
+  [[nodiscard]] std::string_view
+  extract_lexeme(I begin, I end) requires std::input_iterator<I> {
     return std::string_view{begin, end};
   }
 
   template <typename P>
-  auto eat_until(P pred) requires std::predicate<P, char> {
+  [[nodiscard]] auto eat_until(P pred) requires std::predicate<P, char> {
     const auto begin = m_offset;
 
     while (!pred(next()))
@@ -315,7 +317,7 @@ public:
   }
 };
 
-class ParseState {
+class [[nodiscard]] ParseState {
   const std::vector<Token> tokens;
   std::vector<Token>::const_iterator m_offset = tokens.cbegin();
   std::vector<Association> m_associations = {};
@@ -338,11 +340,12 @@ private:
   }
 
   template <Token::Ty ty>
-  std::string_view eat_for_lexeme() {
+  [[nodiscard]] std::string_view eat_for_lexeme() {
     return eat(ty).lexeme<ty>();
   }
 
-  std::tuple<std::vector<ValueType>, std::vector<std::vector<ValueType>>>
+  [[nodiscard]] std::tuple<std::vector<ValueType>,
+                           std::vector<std::vector<ValueType>>>
   rule() {
     if (peek() != Token::Ty::LBrace) {
       eat(Token::Ty::Arrow);
@@ -360,7 +363,7 @@ private:
     return std::tuple{std::move(prereqs), std::move(actions)};
   }
 
-  Token::Ty peek() const {
+  [[nodiscard]] Token::Ty peek() const {
     if (eof()) {
       throw FabError(FabError::UnexpectedEof{});
       return {};
@@ -369,7 +372,7 @@ private:
     }
   }
 
-  ValueType iden_status() {
+  [[nodiscard]] ValueType iden_status() {
     const auto peeked = peek();
 
     if (Token::Ty::Iden == peeked) {
@@ -389,24 +392,25 @@ private:
     }
   }
 
-  ValueType target() {
+  [[nodiscard]] ValueType target() {
     return iden_status();
   }
 
-  std::vector<ValueType> prereqs() {
+  [[nodiscard]] std::vector<ValueType> prereqs() {
     return iden_list();
   }
 
-  static bool matches(Token::Ty) {
+  [[nodiscard]] static bool matches(Token::Ty) {
     return false;
   }
 
   template <typename... Tl>
-  static bool matches(Token::Ty expected, Token::Ty head, Tl... tail) {
+  [[nodiscard]] static bool matches(Token::Ty expected, Token::Ty head,
+                                    Tl... tail) {
     return expected == head || matches(expected, tail...);
   }
 
-  std::vector<std::vector<ValueType>> action() {
+  [[nodiscard]] std::vector<std::vector<ValueType>> action() {
     eat(Token::Ty::LBrace);
 
     bool done = false;
@@ -425,7 +429,7 @@ private:
     return actions;
   }
 
-  std::vector<ValueType> iden_list() {
+  [[nodiscard]] std::vector<ValueType> iden_list() {
     std::vector<ValueType> idens;
 
     while (ParseState::matches(peek(), Token::Ty::Iden, Token::Ty::Macro,
@@ -437,7 +441,7 @@ private:
     return idens;
   }
 
-  std::vector<ValueType> assignment() {
+  [[nodiscard]] std::vector<ValueType> assignment() {
     eat(Token::Ty::Eq);
     auto idens = iden_list();
     eat(Token::Ty::SemiColon);
@@ -513,12 +517,12 @@ public:
     }
   }
 
-  bool eof() const {
+  [[nodiscard]] bool eof() const {
     assert(m_offset != tokens.cend());
     return m_offset->ty() == Token::Ty::Eof;
   }
 
-  Ir into_ir() && {
+  [[nodiscard]] Ir into_ir() && {
     for (const auto &fill : m_fills) {
       const auto matching =
           std::find(m_generic_rules.cbegin(), m_generic_rules.cend(), fill);
@@ -557,14 +561,14 @@ concept ActionScope = SameAs<T, TargetAlias, PrereqAlias>;
 template <typename T>
 concept FileScope = SameAs<T, RValue, LValue>;
 
-struct Resolver {
+struct [[nodiscard]] Resolver {
   const std::map<std::string_view, std::string> &macros;
 
-  std::string_view operator()(const RValue &term) const {
+  [[nodiscard]] std::string_view operator()(const RValue &term) const {
     return term.iden;
   }
 
-  std::string_view operator()(const LValue &res) const {
+  [[nodiscard]] std::string_view operator()(const LValue &res) const {
     const auto &pair = find_or_throw(macros, res.iden, [&res] {
       return FabError(FabError::UndefinedVariable{.var = res.iden});
     });
@@ -573,32 +577,34 @@ struct Resolver {
   }
 
   template <typename T>
-  std::string_view operator()(const T &) const requires ActionScope<T> {
+  [[nodiscard]] std::string_view
+  operator()(const T &) const requires ActionScope<T> {
     throw FabError(FabError::BuiltInMacrosRequireActionScope{});
   }
 };
 
-struct ActionResolver {
+struct [[nodiscard]] ActionResolver {
   const std::string_view target;
   const std::vector<std::string_view> prereqs;
   const std::map<std::string_view, std::string> &macros;
 
-  std::string operator()(const TargetAlias &) const {
+  [[nodiscard]] std::string operator()(const TargetAlias &) const {
     return sv_to_string(target);
   }
 
-  std::string operator()(const PrereqAlias &) const {
+  [[nodiscard]] std::string operator()(const PrereqAlias &) const {
     return foldl(prereqs, " ");
   }
 
   template <typename T>
-  std::string operator()(const T &variant) const requires FileScope<T> {
+  [[nodiscard]] std::string
+  operator()(const T &variant) const requires FileScope<T> {
     return sv_to_string(Resolver{macros}(variant));
   }
 };
 
 namespace detail {
-Binding
+[[nodiscard]] Binding
 resolve_rvalue(const Association &association) {
   const auto into_rvalue = [](const ValueType &v) {
     return std::get<RValue>(v).iden;
@@ -608,10 +614,10 @@ resolve_rvalue(const Association &association) {
   return std::make_pair(iden, foldl(values, " ", into_rvalue));
 }
 
-struct NonRValueResolver {
+struct [[nodiscard]] NonRValueResolver {
   const std::map<std::string_view, std::string> &macros;
 
-  Binding operator()(const Association &association) const {
+  [[nodiscard]] Binding operator()(const Association &association) const {
     const auto resolver = Resolver{.macros = macros};
     const auto [iden, values] = association;
     return std::make_pair(iden, foldl(values, " ", [&](const ValueType &value) {
@@ -620,7 +626,7 @@ struct NonRValueResolver {
   }
 };
 
-std::map<std::string_view, std::string>
+[[nodiscard]] std::map<std::string_view, std::string>
 resolve_associations(const std::vector<Association> &associations) {
   const auto is_rvalue = [](const Association &association) {
     const auto [iden, values] = association;
@@ -642,7 +648,7 @@ resolve_associations(const std::vector<Association> &associations) {
   return macros;
 }
 
-Rule
+[[nodiscard]] Rule
 resolve_rule(const std::map<std::string_view, std::string> &macros,
              const RuleIr &rule) {
   const auto resolver = Resolver{.macros = macros};
@@ -668,7 +674,7 @@ resolve_rule(const std::map<std::string_view, std::string> &macros,
               .actions = std::move(actions)};
 }
 
-std::vector<Rule>
+[[nodiscard]] std::vector<Rule>
 resolve_rules(const std::map<std::string_view, std::string> &macros,
               const std::vector<RuleIr> &rule_irs) {
   return move_collect(std::views::transform(rule_irs, [&](const RuleIr &rule) {
@@ -677,7 +683,7 @@ resolve_rules(const std::map<std::string_view, std::string> &macros,
 }
 
 template <typename T>
-std::set<T, std::less<>>
+[[nodiscard]] std::set<T, std::less<>>
 into_set(std::vector<T> vs) requires std::move_constructible<T> {
   return std::set<T, std::less<>>{
       std::make_move_iterator(vs.begin()),
@@ -687,7 +693,7 @@ into_set(std::vector<T> vs) requires std::move_constructible<T> {
 
 } // namespace detail
 
-Environment
+[[nodiscard]] Environment
 parse_state(Ir ir) {
   auto macros = detail::resolve_associations(ir.associations);
   auto rules = detail::resolve_rules(macros, ir.rules);
@@ -709,7 +715,7 @@ Token::Token(Token::Ty ty, Option<std::string_view> lexeme)
     , m_lexeme(lexeme) {
 }
 
-std::vector<Token>
+[[nodiscard]] std::vector<Token>
 lex(std::string_view source) {
   detail::LexState state{source};
   auto tokens = std::vector<Token>{};
@@ -722,10 +728,12 @@ lex(std::string_view source) {
       [[fallthrough]];
     case ' ':
       break;
-    case '#':
-      state.eat_until([](char c) { return '\n' == c; });
+    case '#': {
+      [[maybe_unused]] auto dc =
+          state.eat_until([](char c) { return '\n' == c; });
       state.eat('\n');
       break;
+    }
     case ':':
       state.eat('=');
       tokens.push_back(Token::make<Token::Ty::Eq>());
@@ -797,7 +805,7 @@ lex(std::string_view source) {
   return tokens;
 }
 
-Environment
+[[nodiscard]] Environment
 parse(std::vector<Token> &&tokens) {
   auto state = detail::ParseState{std::move(tokens)};
   while (!state.eof()) {
@@ -807,27 +815,27 @@ parse(std::vector<Token> &&tokens) {
   return detail::resolve::parse_state(std::move(state).into_ir());
 }
 
-bool
+[[nodiscard]] bool
 operator<(const Rule &lhs, std::string_view rhs) {
   return lhs.target < rhs;
 }
 
-bool
+[[nodiscard]] bool
 operator<(std::string_view lhs, const Rule &rhs) {
   return lhs < rhs.target;
 }
 
-bool
+[[nodiscard]] bool
 operator<(const Rule &lhs, const Rule &rhs) {
   return lhs.target < rhs.target;
 }
 
-bool
+[[nodiscard]] bool
 Environment::is_leaf(std::string_view rule) const {
   return !rules.contains(rule);
 }
 
-const Rule &
+[[nodiscard]] const Rule &
 Environment::get(std::string_view target) const {
   return find_or_throw(rules, target, [&target] {
     return detail::FabError(detail::FabError::UnknownTarget{.target = target});
