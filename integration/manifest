@@ -1,4 +1,5 @@
 advent,stdout
+builtin_macro_requires_action_scope,stderr
 chain_dependency,stdout
 dag,stdout
 default_rule,stdout
