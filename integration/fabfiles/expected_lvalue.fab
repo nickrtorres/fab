@@ -1,0 +1,2 @@
+SRC := foo.c;
+$(foo.c) := bar.c;

@@ -20,3 +20,7 @@ else
 fi
 
 echo "${FABFILE/.fab/},${FD}" >> manifest || exit 1
+cp manifest manifest.bkup || exit 1
+sort manifest > manifest.sorted || exit 1
+mv manifest.sorted manifest || (mv manifest.bkup manifest && exit 1)
+rm manifest.bkup
