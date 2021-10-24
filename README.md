@@ -89,18 +89,6 @@ main <- main.o lib.o {
 }
 ```
 
-### TODO
-- [x] allow multiple prerequisites in each rule
-- [x] allow rules without dependencies
-- [x] allow multiple identifiers in each macro definition
-- [x] support default rule
-- [x] allow multiple actions in a single action block
-- [x] allow inference rules
-- [ ] more negative path tests
-- [ ] fix-up style consistency
-- [ ] add grammar.txt
-
-
 [concepts]: https://en.cppreference.com/w/cpp/language/constraints
 [make]: https://pubs.opengroup.org/onlinepubs/009695299/utilities/make.html
 [ranges]: https://en.cppreference.com/w/cpp/header/ranges

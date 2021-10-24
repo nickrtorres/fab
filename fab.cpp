@@ -30,6 +30,18 @@ same_as_v() {
 template <typename T, typename Head, typename... Tail>
 concept SameAs = same_as_v<T, Head, Tail...>();
 
+template <typename T>
+[[nodiscard]] static bool
+matches(T) {
+  return false;
+}
+
+template <typename Hd, typename... Tl>
+[[nodiscard]] static bool
+matches(Hd candidate, Hd head, Tl... tail) {
+  return candidate == head || matches(candidate, tail...);
+}
+
 [[nodiscard]] std::string
 sv_to_string(std::string_view sv) {
   return std::string{sv.cbegin(), sv.cend()};
@@ -41,7 +53,7 @@ find_or_throw(const Container &haystack, const T &needle,
               MkExn &&mk) requires std::invocable<MkExn> {
   const auto it = haystack.find(needle);
 
-  if (it == std::end(haystack)) {
+  if (std::end(haystack) == it) {
     throw mk();
   }
 
@@ -219,7 +231,7 @@ struct [[nodiscard]] Fill {
   [[nodiscard]] static std::string_view get_extension(std::string_view s) {
     const auto offset = s.rfind(".");
 
-    if (offset == std::string_view::npos || s.size() - 1 == offset) {
+    if (std::string_view::npos == offset || s.size() - 1 == offset) {
       throw FabError(
           FabError::UnexpectedFill{.expected = "<base>.<ext>", .actual = s});
     }
@@ -277,7 +289,7 @@ public:
   }
 
   [[nodiscard]] bool eof() const {
-    return m_offset == buf.cend();
+    return buf.cend() == m_offset;
   }
 
   void eat(char expected) {
@@ -353,7 +365,7 @@ private:
 
     std::vector<ValueType> prereqs = this->prereqs();
 
-    if (peek() == Token::Ty::SemiColon) {
+    if (Token::Ty::SemiColon == peek()) {
       eat(Token::Ty::SemiColon);
       return std::make_tuple(std::move(prereqs),
                              std::vector<std::vector<ValueType>>{});
@@ -400,16 +412,6 @@ private:
     return iden_list();
   }
 
-  [[nodiscard]] static bool matches(Token::Ty) {
-    return false;
-  }
-
-  template <typename... Tl>
-  [[nodiscard]] static bool matches(Token::Ty expected, Token::Ty head,
-                                    Tl... tail) {
-    return expected == head || matches(expected, tail...);
-  }
-
   [[nodiscard]] std::vector<std::vector<ValueType>> action() {
     eat(Token::Ty::LBrace);
 
@@ -432,9 +434,8 @@ private:
   [[nodiscard]] std::vector<ValueType> iden_list() {
     std::vector<ValueType> idens;
 
-    while (ParseState::matches(peek(), Token::Ty::Iden, Token::Ty::Macro,
-                               Token::Ty::TargetAlias,
-                               Token::Ty::PrereqAlias)) {
+    while (matches(peek(), Token::Ty::Iden, Token::Ty::Macro,
+                   Token::Ty::TargetAlias, Token::Ty::PrereqAlias)) {
       idens.push_back(iden_status());
     }
 
@@ -481,20 +482,18 @@ public:
   }
 
   void stmt_list() {
-    if (peek() == Token::Ty::GenericRule) {
+    if (Token::Ty::GenericRule == peek()) {
       generic_rule();
       return;
     }
 
-    if (peek() == Token::Ty::Fill) {
+    if (Token::Ty::Fill == peek()) {
       fill();
       return;
     }
 
     const auto iden = iden_status();
-    const auto peeked = peek();
-
-    if (peeked == Token::Ty::Eq) {
+    if (Token::Ty::Eq == peek()) {
       if (std::holds_alternative<RValue>(iden)) {
         const auto lhs = std::get<RValue>(iden).iden;
         const auto rhs = assignment();
@@ -503,8 +502,7 @@ public:
         throw FabError(
             FabError::ExpectedLValue{.macro = std::get<LValue>(iden).iden});
       }
-    } else if (ParseState::matches(peeked, Token::Ty::Arrow,
-                                   Token::Ty::LBrace)) {
+    } else if (matches(peek(), Token::Ty::Arrow, Token::Ty::LBrace)) {
       const auto [prereqs, actions] = rule();
       m_rules.push_back(
           {.target = iden, .prereqs = prereqs, .actions = actions});
@@ -513,13 +511,13 @@ public:
           FabError::TokenNotInExpectedSet{.expected = {{Token::Ty::Eq},
                                                        {Token::Ty::Arrow},
                                                        {Token::Ty::LBrace}},
-                                          .actual = peeked});
+                                          .actual = peek()});
     }
   }
 
   [[nodiscard]] bool eof() const {
     assert(m_offset != tokens.cend());
-    return m_offset->ty() == Token::Ty::Eof;
+    return Token::Ty::Eof == m_offset->ty();
   }
 
   [[nodiscard]] Ir into_ir() && {
@@ -527,7 +525,7 @@ public:
       const auto matching =
           std::find(m_generic_rules.cbegin(), m_generic_rules.cend(), fill);
 
-      if (matching == m_generic_rules.end()) {
+      if (m_generic_rules.cend() == matching) {
         throw FabError(FabError::UndefinedGenericRule{.target = fill.target,
                                                       .prereq = fill.prereq});
       } else {
@@ -752,31 +750,31 @@ lex(std::string_view source) {
       tokens.push_back(Token::make<Token::Ty::Arrow>());
       break;
     case '[':
-      if (state.peek() == '*') {
+      if ('*' == state.peek()) {
         state.eat('*');
         state.eat('.');
         const auto [begin, end] =
-            state.eat_until([](char c) { return c == ']'; });
+            state.eat_until([](char c) { return ']' == c; });
         state.eat(']');
         tokens.push_back(Token::make<Token::Ty::GenericRule>(
             state.extract_lexeme(begin, end)));
         break;
       } else {
         const auto [begin, end] =
-            state.eat_until([](char c) { return c == ']'; });
+            state.eat_until([](char c) { return ']' == c; });
         state.eat(']');
         tokens.push_back(
             Token::make<Token::Ty::Fill>(state.extract_lexeme(begin, end)));
         break;
       }
     case '$': {
-      if (state.peek() == '@') {
+      if ('@' == state.peek()) {
         state.eat('@');
         tokens.push_back(Token::make<Token::Ty::TargetAlias>());
         break;
       }
 
-      if (state.peek() == '<') {
+      if ('<' == state.peek()) {
         state.eat('<');
         tokens.push_back(Token::make<Token::Ty::PrereqAlias>());
         break;
@@ -784,15 +782,15 @@ lex(std::string_view source) {
 
       state.eat('(');
       const auto [begin, end] =
-          state.eat_until([](char c) { return c == ')'; });
+          state.eat_until([](char c) { return ')' == c; });
       tokens.push_back(
           Token::make<Token::Ty::Macro>(state.extract_lexeme(begin, end)));
       state.eat(')');
       break;
     }
     default: {
-      const auto [begin, end] = state.eat_until(
-          [](char c) { return c == ' ' || c == '\n' || c == ';'; });
+      const auto [begin, end] =
+          state.eat_until([](char c) { return matches(c, ' ', '\n', ';'); });
 
       tokens.push_back(Token::make<Token::Ty::Iden>(
           state.extract_lexeme(std::prev(begin), end)));
