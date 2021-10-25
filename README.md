@@ -6,7 +6,6 @@
   - avoids allocation (ie. `string_view` instead of `std::string`)
   - uses [ranges]
   - constrains generics with [concepts]
-  - uses stdlib algorithms instead of manual iteration
 
 Much like `make(1)`, `fab` supplies three main constructs: targets,
 prerequisites, and actions -- a _rule_ is a combination these constructs.
@@ -71,7 +70,7 @@ lib.o <- lib.c {
 }
 ```
 
-Fab also allows generic rules -- similar to make's inference rules.
+Fab also allows generic rules -- similar to `make(1)`'s inference rules.
 The general syntax is demonstrated below.
 ```
 CC := /opt/bin/gcc;
