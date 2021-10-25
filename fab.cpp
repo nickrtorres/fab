@@ -71,9 +71,9 @@ requires std::ranges::range<R> &&
     Concat<std::invoke_result_t<Transform, std::ranges::range_value_t<R>>>
 [[nodiscard]] std::string
 foldl(R &&range, const D &delim, Transform transform = {}) {
-  std::string s = {};
+  auto s = std::string{};
+  auto first = bool{true};
 
-  bool first = true;
   for (const auto &e : range) {
     if (!first) {
       s += delim;
@@ -139,7 +139,7 @@ struct [[nodiscard]] FabError final : std::runtime_error {
       ss << "expected one of: {";
 
       ss << foldl(u.expected, " ", [](const T &t) {
-        std::stringstream ss = {};
+        auto ss = std::stringstream{};
         ss << t;
         return ss.str();
       });
@@ -415,7 +415,7 @@ private:
   [[nodiscard]] std::vector<std::vector<ValueType>> action() {
     eat(Token::Ty::LBrace);
 
-    bool done = false;
+    auto done = bool{false};
     auto actions = std::vector<std::vector<ValueType>>{};
 
     while (!done) {
@@ -907,7 +907,7 @@ operator<<(std::ostream &os, const Rule &r) {
   os << ", .prereqs = [";
 
   {
-    bool first = true;
+    auto first = bool{true};
     for (const auto &d : r.prereqs) {
       if (!first) {
         os << ", ";
@@ -922,7 +922,7 @@ operator<<(std::ostream &os, const Rule &r) {
      << ", .actions = [";
 
   {
-    bool first = true;
+    auto first = bool{true};
     for (const auto &a : r.actions) {
       if (!first) {
         os << ", ";

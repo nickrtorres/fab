@@ -5,36 +5,36 @@
 #include "fab.h"
 
 TEST(Lexer, ItRecognizesArrows) {
-  auto actual = lex("<-");
+  const auto actual = lex("<-");
 
-  auto expected = std::vector<Token>{Token::make<Token::Ty::Arrow>(),
-                                     Token::make<Token::Ty::Eof>()};
+  const auto expected = std::vector<Token>{Token::make<Token::Ty::Arrow>(),
+                                           Token::make<Token::Ty::Eof>()};
   ASSERT_EQ(expected, actual);
 }
 
 TEST(Lexer, ItRecognizesIdentifiers) {
-  auto actual = lex("foo;");
+  const auto actual = lex("foo;");
 
-  auto expected = std::vector<Token>{
+  const auto expected = std::vector<Token>{
       Token::make<Token::Ty::Iden>(std::string_view{"foo"}),
       Token::make<Token::Ty::SemiColon>(), Token::make<Token::Ty::Eof>()};
   ASSERT_EQ(expected, actual);
 }
 
 TEST(Lexer, ItRecognizesBraces) {
-  auto actual = lex("{}");
+  const auto actual = lex("{}");
 
-  auto expected = std::vector<Token>{Token::make<Token::Ty::LBrace>(),
-                                     Token::make<Token::Ty::RBrace>(),
-                                     Token::make<Token::Ty::Eof>()};
+  const auto expected = std::vector<Token>{Token::make<Token::Ty::LBrace>(),
+                                           Token::make<Token::Ty::RBrace>(),
+                                           Token::make<Token::Ty::Eof>()};
 
   ASSERT_EQ(expected, actual);
 }
 
 TEST(Lexer, ItRecognizesAFullRule) {
-  auto actual = lex("foo <- bar { baz; }");
+  const auto actual = lex("foo <- bar { baz; }");
 
-  auto expected = std::vector<Token>{
+  const auto expected = std::vector<Token>{
       Token::make<Token::Ty::Iden>("foo"), Token::make<Token::Ty::Arrow>(),
       Token::make<Token::Ty::Iden>("bar"), Token::make<Token::Ty::LBrace>(),
       Token::make<Token::Ty::Iden>("baz"), Token::make<Token::Ty::SemiColon>(),
@@ -44,10 +44,10 @@ TEST(Lexer, ItRecognizesAFullRule) {
 }
 
 TEST(Lexer, ItRecognizesMacros) {
-  auto actual = lex("$(CC)");
+  const auto actual = lex("$(CC)");
 
-  auto expected = std::vector<Token>{Token::make<Token::Ty::Macro>("CC"),
-                                     Token::make<Token::Ty::Eof>()};
+  const auto expected = std::vector<Token>{Token::make<Token::Ty::Macro>("CC"),
+                                           Token::make<Token::Ty::Eof>()};
   ASSERT_EQ(expected, actual);
 }
 
@@ -56,9 +56,9 @@ TEST(Lexer, ItExpectsValidTokens) {
 }
 
 TEST(Lexer, ItRecognizesGenericRules) {
-  auto actual = lex("[*.o] <- [*.c] { cc -o $@ $<; }");
+  const auto actual = lex("[*.o] <- [*.c] { cc -o $@ $<; }");
 
-  auto expected = std::vector<Token>{
+  const auto expected = std::vector<Token>{
       Token::make<Token::Ty::GenericRule>("o"),
       Token::make<Token::Ty::Arrow>(),
       Token::make<Token::Ty::GenericRule>("c"),
@@ -77,9 +77,9 @@ TEST(Lexer, ItRecognizesGenericRules) {
 
 TEST(Parser, ItParsesARule) {
   auto tokens = lex("main <- main.cpp lib.cpp { c++ -o main main.cpp; }");
-  auto actual = parse(std::move(tokens)).rules;
+  const auto actual = parse(std::move(tokens)).rules;
 
-  auto expected =
+  const auto expected =
       std::set<Rule, std::less<>>{{.target = "main",
                                    .prereqs = {"main.cpp", "lib.cpp"},
                                    .actions = {"c++ -o main main.cpp"}}};
@@ -89,9 +89,9 @@ TEST(Parser, ItParsesARule) {
 
 TEST(Parser, ItLooksUpMacros) {
   auto tokens = lex("CC := cc; main <- main.c { $(CC) -o main main.c; }");
-  auto actual = parse(std::move(tokens)).rules;
+  const auto actual = parse(std::move(tokens)).rules;
 
-  auto expected =
+  const auto expected =
       std::set<Rule, std::less<>>{{.target = "main",
                                    .prereqs = {"main.c"},
                                    .actions = {"cc -o main main.c"}}};
@@ -112,9 +112,9 @@ TEST(Parser, ItOnlyKnowsDefinedVariables) {
 TEST(Parser, ItCanFillGenericRules) {
   auto tokens = lex("[*.o] <- [*.c] { cc -c $<; } [main.o] <- [main.c]; main "
                     "<- main.o { cc -o $@ $<; }");
-  auto actual = parse(std::move(tokens)).rules;
+  const auto actual = parse(std::move(tokens)).rules;
 
-  auto expected = std::set<Rule, std::less<>>{
+  const auto expected = std::set<Rule, std::less<>>{
       {.target = "main.o", .prereqs = {"main.c"}, .actions = {"cc -c main.c"}},
       {.target = "main",
        .prereqs = {"main.o"},

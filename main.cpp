@@ -24,15 +24,15 @@ constexpr int CMD_OK = 0;
 
 std::filesystem::file_time_type
 last_write(std::string_view path) {
-  std::error_code ec = {};
-  auto time =
+  auto ec = std::error_code{};
+  const auto time =
       std::filesystem::last_write_time({path.cbegin(), path.cend()}, ec);
 
   if (!ec) {
     return time;
   } else {
     if (std::filesystem::exists(path)) {
-      auto target = std::string{path.cbegin(), path.cend()};
+      const auto target = std::string{path.cbegin(), path.cend()};
       throw std::runtime_error(
           target + "exists, but could not determine the last write time.");
     }
@@ -46,8 +46,8 @@ last_write(std::string_view path) {
 
 namespace detail {
 void
-run_system_cmds(std::vector<std::string> cmds) {
-  for (auto &cmd : cmds) {
+run_system_cmds(const std::vector<std::string> &cmds) {
+  for (const auto &cmd : cmds) {
     std::cerr << cmd << std::endl;
     if (CMD_OK != system(cmd.c_str())) {
       throw std::runtime_error("could not run command: " + cmd);
@@ -72,8 +72,8 @@ eval(const Rule &rule) {
     return;
   }
 
-  auto times = rule.prereqs | std::views::transform(last_write);
-  auto max = *std::ranges::max_element(times.begin(), times.end());
+  const auto times = rule.prereqs | std::views::transform(last_write);
+  const auto max = *std::ranges::max_element(times.begin(), times.end());
 
   if (last_write(rule.target) < max) {
     run_system_cmds(rule.actions);
@@ -142,7 +142,7 @@ main(int argc, char **argv) {
   };
 
   std::string fabfile = "Fabfile";
-  int ch = {};
+  auto ch = int{};
   while ((ch = getopt(argc, argv, "f:")) != -1) {
     switch (ch) {
     case 'f':
@@ -158,7 +158,7 @@ main(int argc, char **argv) {
     return errout("Fabfile not found.");
   }
 
-  auto handle = std::ifstream{fabfile};
+  const auto handle = std::ifstream{fabfile};
 
   if (!handle.is_open()) {
     return errout("could not open Fabfile.");
