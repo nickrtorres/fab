@@ -3,7 +3,7 @@
   - exposes a minimal interface to users (really just `lex`, `parse`, and a few
    types)
   - uses immutable values and references
-  - avoids allocation (ie. `string_view` instead of `std::string`)
+  - prefers `string_view` to `std::string`
   - uses [ranges]
   - constrains generics with [concepts]
 
